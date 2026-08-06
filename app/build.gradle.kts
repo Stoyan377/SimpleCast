@@ -47,6 +47,14 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+    applicationVariants.all { variant ->
+        variant.outputs.all { output ->
+            val impl = output as? com.android.build.gradle.internal.api.BaseVariantOutputImpl
+            impl?.outputFileName = "SimpleCast-v${variant.versionName}-${variant.buildType.name}.apk"
+            true
+        }
+        true
+    }
 }
 
 dependencies {
@@ -84,7 +92,6 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
     androidTestImplementation(platform("androidx.compose:compose-bom:2024.05.00"))
-    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
-    debugImplementation("androidx.compose.ui:ui-tooling")
+    androidTestImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

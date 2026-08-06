@@ -23,7 +23,7 @@ MERGED from [androidx.fragment:fragment:1.3.6] C:\Users\Stoyan\.gradle\caches\9.
 MERGED from [androidx.activity:activity:1.9.0] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\6ae2aa10e48a7ca23d015b0a66928658\workspace\transformed\activity-1.9.0\AndroidManifest.xml:17:1-22:12
 MERGED from [androidx.activity:activity-ktx:1.9.0] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\0ff63743385fad68511ece932d4d32f8\workspace\transformed\activity-ktx-1.9.0\AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.compose.material3:material3-android:1.2.1] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\70367b38f68ec1787da5590282cf2b08\workspace\transformed\material3-release\AndroidManifest.xml:17:1-22:12
-MERGED from [androidx.compose.material:material-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\51f96e882336ac8977497de76e9d50a1\workspace\transformed\material-release\AndroidManifest.xml:2:1-7:12
+MERGED from [androidx.activity:activity-compose:1.9.0] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\99c6e5e9ee0aa3de327a6fd8a8fd061f\workspace\transformed\activity-compose-1.9.0\AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.compose.material:material-icons-core-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\05ac6be71fb83d269d429dc84961b5c7\workspace\transformed\material-icons-core-release\AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.compose.material:material-icons-extended-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\934875f7e0785b008a05d3e1a06b3d45\workspace\transformed\material-icons-extended-release\AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.compose.material:material-ripple-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\7b6db02cf78546be05e1abc5ed274840\workspace\transformed\material-ripple-release\AndroidManifest.xml:2:1-7:12
@@ -31,7 +31,6 @@ MERGED from [androidx.compose.animation:animation-core-android:1.6.7] C:\Users\S
 MERGED from [androidx.compose.animation:animation-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\48401ca57f5efa8df863ebcb748ffc7a\workspace\transformed\animation-release\AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.compose.foundation:foundation-layout-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\c7fb226c802a77e55b98a434608b57db\workspace\transformed\foundation-layout-release\AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.compose.foundation:foundation-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\0811bd773d3829f2807119d19d5c6189\workspace\transformed\foundation-release\AndroidManifest.xml:2:1-7:12
-MERGED from [androidx.compose.ui:ui-tooling-data-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\6a51cd0f603454b87021ba7c4eda0114\workspace\transformed\ui-tooling-data-release\AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.compose.ui:ui-unit-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\3744218db5320d727bb1a6a1807ce608\workspace\transformed\ui-unit-release\AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.compose.ui:ui-geometry-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\6ae74d29bfa01128e52081340a5b973e\workspace\transformed\ui-geometry-release\AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.compose.ui:ui-util-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\e923009fb39c5cf94b6098a93a12bd3a\workspace\transformed\ui-util-release\AndroidManifest.xml:2:1-7:12
@@ -39,8 +38,6 @@ MERGED from [androidx.compose.ui:ui-text-android:1.6.7] C:\Users\Stoyan\.gradle\
 MERGED from [androidx.compose.ui:ui-tooling-preview-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\36a41e05dbd741430f67dc14e1c8a665\workspace\transformed\ui-tooling-preview-release\AndroidManifest.xml:17:1-22:12
 MERGED from [androidx.compose.ui:ui-graphics-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\b74756afd08d24d961d9f4e8257991ac\workspace\transformed\ui-graphics-release\AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.compose.ui:ui-test-manifest:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\362edd2be4efea006ad572392eafbe02\workspace\transformed\ui-test-manifest-1.6.7\AndroidManifest.xml:17:1-28:12
-MERGED from [androidx.compose.ui:ui-tooling-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\2944731e8cfe22bcc3c0c920b50bf2ca\workspace\transformed\ui-tooling-release\AndroidManifest.xml:17:1-28:12
-MERGED from [androidx.activity:activity-compose:1.9.0] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\99c6e5e9ee0aa3de327a6fd8a8fd061f\workspace\transformed\activity-compose-1.9.0\AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.savedstate:savedstate-ktx:1.2.1] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\8d63ce45304f812c94d92fb751f2fc6b\workspace\transformed\savedstate-ktx-1.2.1\AndroidManifest.xml:17:1-22:12
 MERGED from [androidx.savedstate:savedstate:1.2.1] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\ee1c079221ca18a2db9c2507f5cd7bb5\workspace\transformed\savedstate-1.2.1\AndroidManifest.xml:17:1-22:12
 MERGED from [androidx.legacy:legacy-support-core-utils:1.0.0] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\32c47fdb6d499c56381dd7d28e3de52a\workspace\transformed\legacy-support-core-utils-1.0.0\AndroidManifest.xml:17:1-22:12
@@ -136,8 +133,6 @@ ADDED from C:\Users\Stoyan\.gemini\antigravity\scratch\SimpleCast\app\src\main\A
 INJECTED from C:\Users\Stoyan\.gemini\antigravity\scratch\SimpleCast\app\src\main\AndroidManifest.xml:20:5-48:19
 MERGED from [androidx.compose.ui:ui-test-manifest:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\362edd2be4efea006ad572392eafbe02\workspace\transformed\ui-test-manifest-1.6.7\AndroidManifest.xml:22:5-26:19
 MERGED from [androidx.compose.ui:ui-test-manifest:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\362edd2be4efea006ad572392eafbe02\workspace\transformed\ui-test-manifest-1.6.7\AndroidManifest.xml:22:5-26:19
-MERGED from [androidx.compose.ui:ui-tooling-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\2944731e8cfe22bcc3c0c920b50bf2ca\workspace\transformed\ui-tooling-release\AndroidManifest.xml:22:5-26:19
-MERGED from [androidx.compose.ui:ui-tooling-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\2944731e8cfe22bcc3c0c920b50bf2ca\workspace\transformed\ui-tooling-release\AndroidManifest.xml:22:5-26:19
 MERGED from [androidx.emoji2:emoji2:1.3.0] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\d39693362f1cad18ca5a1d8891dbdd98\workspace\transformed\emoji2-1.3.0\AndroidManifest.xml:23:5-33:19
 MERGED from [androidx.emoji2:emoji2:1.3.0] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\d39693362f1cad18ca5a1d8891dbdd98\workspace\transformed\emoji2-1.3.0\AndroidManifest.xml:23:5-33:19
 MERGED from [androidx.lifecycle:lifecycle-process:2.8.0] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\27c8ff7b4faaa1a9f288455d68005ed4\workspace\transformed\lifecycle-process-2.8.0\AndroidManifest.xml:23:5-33:19
@@ -242,8 +237,8 @@ MERGED from [androidx.activity:activity-ktx:1.9.0] C:\Users\Stoyan\.gradle\cache
 MERGED from [androidx.activity:activity-ktx:1.9.0] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\0ff63743385fad68511ece932d4d32f8\workspace\transformed\activity-ktx-1.9.0\AndroidManifest.xml:5:5-44
 MERGED from [androidx.compose.material3:material3-android:1.2.1] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\70367b38f68ec1787da5590282cf2b08\workspace\transformed\material3-release\AndroidManifest.xml:20:5-44
 MERGED from [androidx.compose.material3:material3-android:1.2.1] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\70367b38f68ec1787da5590282cf2b08\workspace\transformed\material3-release\AndroidManifest.xml:20:5-44
-MERGED from [androidx.compose.material:material-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\51f96e882336ac8977497de76e9d50a1\workspace\transformed\material-release\AndroidManifest.xml:5:5-44
-MERGED from [androidx.compose.material:material-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\51f96e882336ac8977497de76e9d50a1\workspace\transformed\material-release\AndroidManifest.xml:5:5-44
+MERGED from [androidx.activity:activity-compose:1.9.0] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\99c6e5e9ee0aa3de327a6fd8a8fd061f\workspace\transformed\activity-compose-1.9.0\AndroidManifest.xml:5:5-44
+MERGED from [androidx.activity:activity-compose:1.9.0] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\99c6e5e9ee0aa3de327a6fd8a8fd061f\workspace\transformed\activity-compose-1.9.0\AndroidManifest.xml:5:5-44
 MERGED from [androidx.compose.material:material-icons-core-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\05ac6be71fb83d269d429dc84961b5c7\workspace\transformed\material-icons-core-release\AndroidManifest.xml:5:5-44
 MERGED from [androidx.compose.material:material-icons-core-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\05ac6be71fb83d269d429dc84961b5c7\workspace\transformed\material-icons-core-release\AndroidManifest.xml:5:5-44
 MERGED from [androidx.compose.material:material-icons-extended-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\934875f7e0785b008a05d3e1a06b3d45\workspace\transformed\material-icons-extended-release\AndroidManifest.xml:5:5-44
@@ -258,8 +253,6 @@ MERGED from [androidx.compose.foundation:foundation-layout-android:1.6.7] C:\Use
 MERGED from [androidx.compose.foundation:foundation-layout-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\c7fb226c802a77e55b98a434608b57db\workspace\transformed\foundation-layout-release\AndroidManifest.xml:5:5-44
 MERGED from [androidx.compose.foundation:foundation-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\0811bd773d3829f2807119d19d5c6189\workspace\transformed\foundation-release\AndroidManifest.xml:5:5-44
 MERGED from [androidx.compose.foundation:foundation-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\0811bd773d3829f2807119d19d5c6189\workspace\transformed\foundation-release\AndroidManifest.xml:5:5-44
-MERGED from [androidx.compose.ui:ui-tooling-data-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\6a51cd0f603454b87021ba7c4eda0114\workspace\transformed\ui-tooling-data-release\AndroidManifest.xml:5:5-44
-MERGED from [androidx.compose.ui:ui-tooling-data-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\6a51cd0f603454b87021ba7c4eda0114\workspace\transformed\ui-tooling-data-release\AndroidManifest.xml:5:5-44
 MERGED from [androidx.compose.ui:ui-unit-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\3744218db5320d727bb1a6a1807ce608\workspace\transformed\ui-unit-release\AndroidManifest.xml:5:5-44
 MERGED from [androidx.compose.ui:ui-unit-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\3744218db5320d727bb1a6a1807ce608\workspace\transformed\ui-unit-release\AndroidManifest.xml:5:5-44
 MERGED from [androidx.compose.ui:ui-geometry-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\6ae74d29bfa01128e52081340a5b973e\workspace\transformed\ui-geometry-release\AndroidManifest.xml:5:5-44
@@ -274,10 +267,6 @@ MERGED from [androidx.compose.ui:ui-graphics-android:1.6.7] C:\Users\Stoyan\.gra
 MERGED from [androidx.compose.ui:ui-graphics-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\b74756afd08d24d961d9f4e8257991ac\workspace\transformed\ui-graphics-release\AndroidManifest.xml:5:5-44
 MERGED from [androidx.compose.ui:ui-test-manifest:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\362edd2be4efea006ad572392eafbe02\workspace\transformed\ui-test-manifest-1.6.7\AndroidManifest.xml:20:5-44
 MERGED from [androidx.compose.ui:ui-test-manifest:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\362edd2be4efea006ad572392eafbe02\workspace\transformed\ui-test-manifest-1.6.7\AndroidManifest.xml:20:5-44
-MERGED from [androidx.compose.ui:ui-tooling-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\2944731e8cfe22bcc3c0c920b50bf2ca\workspace\transformed\ui-tooling-release\AndroidManifest.xml:20:5-44
-MERGED from [androidx.compose.ui:ui-tooling-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\2944731e8cfe22bcc3c0c920b50bf2ca\workspace\transformed\ui-tooling-release\AndroidManifest.xml:20:5-44
-MERGED from [androidx.activity:activity-compose:1.9.0] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\99c6e5e9ee0aa3de327a6fd8a8fd061f\workspace\transformed\activity-compose-1.9.0\AndroidManifest.xml:5:5-44
-MERGED from [androidx.activity:activity-compose:1.9.0] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\99c6e5e9ee0aa3de327a6fd8a8fd061f\workspace\transformed\activity-compose-1.9.0\AndroidManifest.xml:5:5-44
 MERGED from [androidx.savedstate:savedstate-ktx:1.2.1] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\8d63ce45304f812c94d92fb751f2fc6b\workspace\transformed\savedstate-ktx-1.2.1\AndroidManifest.xml:20:5-44
 MERGED from [androidx.savedstate:savedstate-ktx:1.2.1] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\8d63ce45304f812c94d92fb751f2fc6b\workspace\transformed\savedstate-ktx-1.2.1\AndroidManifest.xml:20:5-44
 MERGED from [androidx.savedstate:savedstate:1.2.1] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\ee1c079221ca18a2db9c2507f5cd7bb5\workspace\transformed\savedstate-1.2.1\AndroidManifest.xml:20:5-44
@@ -380,12 +369,6 @@ ADDED from [androidx.compose.ui:ui-test-manifest:1.6.7] C:\Users\Stoyan\.gradle\
 		ADDED from [androidx.compose.ui:ui-test-manifest:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\362edd2be4efea006ad572392eafbe02\workspace\transformed\ui-test-manifest-1.6.7\AndroidManifest.xml:25:13-36
 	android:name
 		ADDED from [androidx.compose.ui:ui-test-manifest:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\362edd2be4efea006ad572392eafbe02\workspace\transformed\ui-test-manifest-1.6.7\AndroidManifest.xml:24:13-63
-activity#androidx.compose.ui.tooling.PreviewActivity
-ADDED from [androidx.compose.ui:ui-tooling-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\2944731e8cfe22bcc3c0c920b50bf2ca\workspace\transformed\ui-tooling-release\AndroidManifest.xml:23:9-25:39
-	android:exported
-		ADDED from [androidx.compose.ui:ui-tooling-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\2944731e8cfe22bcc3c0c920b50bf2ca\workspace\transformed\ui-tooling-release\AndroidManifest.xml:25:13-36
-	android:name
-		ADDED from [androidx.compose.ui:ui-tooling-android:1.6.7] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\2944731e8cfe22bcc3c0c920b50bf2ca\workspace\transformed\ui-tooling-release\AndroidManifest.xml:24:13-71
 provider#androidx.startup.InitializationProvider
 ADDED from [androidx.emoji2:emoji2:1.3.0] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\d39693362f1cad18ca5a1d8891dbdd98\workspace\transformed\emoji2-1.3.0\AndroidManifest.xml:24:9-32:20
 MERGED from [androidx.lifecycle:lifecycle-process:2.8.0] C:\Users\Stoyan\.gradle\caches\9.1.0\transforms\27c8ff7b4faaa1a9f288455d68005ed4\workspace\transformed\lifecycle-process-2.8.0\AndroidManifest.xml:24:9-32:20
