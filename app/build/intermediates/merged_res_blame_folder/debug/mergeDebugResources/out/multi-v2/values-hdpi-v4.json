@@ -1,0 +1,20 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.simplecast.app-mergeDebugResources-2:/values-hdpi-v4/values-hdpi-v4.xml",
+            "map": [
+                {
+                    "source": "C:\\Users\\Stoyan\\.gradle\\caches\\9.1.0\\transforms\\60df9f0abe7650c4c83f5b11731402c6\\workspace\\transformed\\appcompat-1.6.1\\res\\values-hdpi-v4\\values-hdpi-v4.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endLines": "6",
+                        "endColumns": "13",
+                        "endOffsets": "327"
+                    }
+                }
+            ]
+        }
+    ]
+}
