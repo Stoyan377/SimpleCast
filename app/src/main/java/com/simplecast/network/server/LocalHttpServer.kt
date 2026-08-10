@@ -147,8 +147,17 @@ class LocalHttpServer(
      */
     private fun serveProxy(session: IHTTPSession): Response {
         return try {
-            val encodedUrl = session.uri.substringAfter("/proxy/")
-            val remoteUrl = java.net.URLDecoder.decode(encodedUrl, "UTF-8")
+            val fullUri = session.uri.substringAfter("/proxy/")
+            val rawUrl = fullUri.substringBefore("?")
+            val remoteUrl = java.net.URLDecoder.decode(rawUrl, "UTF-8")
+
+            // Parse optional query params passed to proxy (e.g. ?cookie=...)
+            val queryString = session.queryParameterString ?: ""
+            var queryCookie: String? = null
+            if (queryString.contains("cookie=")) {
+                val cookieVal = queryString.substringAfter("cookie=").substringBefore("&")
+                queryCookie = java.net.URLDecoder.decode(cookieVal, "UTF-8")
+            }
 
             if (remoteUrl.isBlank()) {
                 return newFixedLengthResponse(Response.Status.BAD_REQUEST, MIME_PLAINTEXT, "No URL provided")
@@ -158,9 +167,29 @@ class LocalHttpServer(
             conn.connectTimeout = 15000
             conn.readTimeout = 30000
             conn.instanceFollowRedirects = true
+
+            // Set browser User-Agent
             conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
             conn.setRequestProperty("Accept", "*/*")
             conn.setRequestProperty("Accept-Encoding", "identity") // No compression - stream as-is
+
+            // Forward session/captured cookies if present
+            val sessionCookies = queryCookie ?: session.headers["x-proxy-cookie"] ?: session.headers["cookie"]
+            if (!sessionCookies.isNullOrEmpty()) {
+                conn.setRequestProperty("Cookie", sessionCookies)
+            }
+
+            // Forward Referer if present
+            val referer = session.headers["x-proxy-referer"] ?: session.headers["referer"]
+            if (!referer.isNullOrEmpty()) {
+                conn.setRequestProperty("Referer", referer)
+            } else {
+                // Default Referer to origin domain of stream
+                try {
+                    val uriObj = URL(remoteUrl)
+                    conn.setRequestProperty("Referer", "${uriObj.protocol}://${uriObj.host}/")
+                } catch (e: Exception) {}
+            }
 
             // Forward Range header if the TV requests it
             val rangeHeader = session.headers["range"]

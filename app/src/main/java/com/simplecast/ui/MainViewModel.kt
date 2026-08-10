@@ -146,7 +146,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // Proxy the web stream through our local HTTP server
             // This converts HTTPS → HTTP which LG webOS DLNA can handle
             val encodedUrl = java.net.URLEncoder.encode(sniffedMedia.url, "UTF-8")
-            val proxyUrl = "http://$ip:8080/proxy/$encodedUrl"
+            var proxyUrl = "http://$ip:8080/proxy/$encodedUrl"
+
+            // Attach cookies if captured
+            if (!sniffedMedia.cookies.isNullOrEmpty()) {
+                val encodedCookies = java.net.URLEncoder.encode(sniffedMedia.cookies, "UTF-8")
+                proxyUrl += "?cookie=$encodedCookies"
+            }
 
             // Use video/mp4 as mime for DLNA regardless of original stream type
             // The proxy handles the actual content type

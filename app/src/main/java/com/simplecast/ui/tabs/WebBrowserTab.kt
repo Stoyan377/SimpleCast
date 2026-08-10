@@ -207,6 +207,9 @@ fun WebBrowserTab(
                             }
 
                             // Delegate to sniffer client to detect media
+                            if (request != null) {
+                                snifferClient.checkAndNotifyMedia(reqUrl, "Web Video", request.requestHeaders ?: emptyMap())
+                            }
                             return snifferClient.shouldInterceptRequest(view, request)
                         }
 

@@ -17,6 +17,8 @@ data class SniffedMedia(
     val quality: String,
     val domain: String,
     val isRecommended: Boolean = false,
+    val headers: Map<String, String> = emptyMap(),
+    val cookies: String? = null,
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -92,7 +94,7 @@ class MediaSnifferWebViewClient(
         view?.evaluateJavascript(jsScript, null)
     }
 
-    fun checkAndNotifyMedia(url: String, pageTitle: String) {
+    fun checkAndNotifyMedia(url: String, pageTitle: String, headers: Map<String, String> = emptyMap()) {
         val lowerUrl = url.lowercase(Locale.ROOT)
 
         // Ignore blob URLs, static assets, analytics, and fragmented audio/video range chunks
@@ -144,13 +146,18 @@ class MediaSnifferWebViewClient(
 
             val isRecommended = lowerUrl.contains("m3u8") || lowerUrl.contains("master") || lowerUrl.contains("1080") || lowerUrl.contains("720")
 
+            val cookieManager = android.webkit.CookieManager.getInstance()
+            val cookies = try { cookieManager.getCookie(url) } catch (e: Exception) { null }
+
             val sniffedMedia = SniffedMedia(
                 url = url,
                 mimeType = mimeType,
                 title = title,
                 quality = quality,
                 domain = domain,
-                isRecommended = isRecommended
+                isRecommended = isRecommended,
+                headers = headers,
+                cookies = cookies
             )
 
             mainHandler.post {
