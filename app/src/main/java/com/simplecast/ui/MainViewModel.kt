@@ -11,6 +11,7 @@ import com.simplecast.network.server.LocalHttpServer
 import com.simplecast.network.ssdp.DlnaDevice
 import com.simplecast.network.ssdp.SsdpDiscoveryManager
 import com.simplecast.network.utils.NetworkUtils
+import com.simplecast.service.MediaPlaybackService
 import com.simplecast.web.SniffedMedia
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -78,6 +79,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _playbackState.value = PlaybackState()
             httpServer.clearMedia()
             _showDevicePicker.value = false
+            MediaPlaybackService.stopService(getApplication())
         }
     }
 
@@ -118,6 +120,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     mediaUrl = localStreamUrl,
                     mediaType = mediaType
                 )
+                MediaPlaybackService.startService(getApplication(), title)
             } else {
                 showToast("Failed to send media to TV")
             }
@@ -197,6 +200,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         mediaType = MediaType.VIDEO
                     )
                     showToast("Playing on ${device.friendlyName}")
+                    MediaPlaybackService.startService(getApplication(), sniffedMedia.title)
                 } else {
                     showToast("URL accepted but playback failed – stream may be DRM-protected")
                 }
@@ -218,6 +222,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 if (dlnaController.play(device.controlUrl)) {
                     _playbackState.value = currentState.copy(isPlaying = true)
+                    MediaPlaybackService.startService(getApplication(), currentState.mediaTitle)
                 }
             }
         }
@@ -228,6 +233,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             if (dlnaController.stop(device.controlUrl)) {
                 _playbackState.value = PlaybackState()
+                MediaPlaybackService.stopService(getApplication())
             }
         }
     }
