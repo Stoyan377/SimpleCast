@@ -1,5 +1,7 @@
 package com.simplecast.web
 
+import android.os.Handler
+import android.os.Looper
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
@@ -19,29 +21,34 @@ class MediaSnifferWebViewClient(
 
     private val mediaExtensions = listOf(".mp4", ".m3u8", ".mpd", ".webm", ".mov", ".mkv", ".flv", ".ts")
     private val detectedUrls = HashSet<String>()
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun shouldInterceptRequest(
         view: WebView?,
         request: WebResourceRequest?
     ): WebResourceResponse? {
-        request?.url?.toString()?.let { url ->
-            checkAndNotifyMedia(url, view?.title ?: "Web Video")
+        val url = request?.url?.toString()
+        if (!url.isNullOrEmpty()) {
+            checkAndNotifyMedia(url)
         }
         return super.shouldInterceptRequest(view, request)
     }
 
     override fun onLoadResource(view: WebView?, url: String?) {
-        url?.let {
-            checkAndNotifyMedia(it, view?.title ?: "Web Video")
+        if (!url.isNullOrEmpty()) {
+            checkAndNotifyMedia(url)
         }
         super.onLoadResource(view, url)
     }
 
-    private fun checkAndNotifyMedia(url: String, currentTitle: String) {
+    private fun checkAndNotifyMedia(url: String) {
         val lowerUrl = url.lowercase(Locale.ROOT)
 
-        // Ignore common static analytics or non-video assets
-        if (lowerUrl.contains(".js") || lowerUrl.contains(".css") || lowerUrl.contains(".png") || lowerUrl.contains(".jpg")) {
+        // Filter out static web assets and analytics scripts
+        if (lowerUrl.contains(".js") || lowerUrl.contains(".css") || lowerUrl.contains(".png") ||
+            lowerUrl.contains(".jpg") || lowerUrl.contains(".jpeg") || lowerUrl.contains(".svg") ||
+            lowerUrl.contains("google-analytics") || lowerUrl.contains("facebook.com")
+        ) {
             return
         }
 
@@ -58,21 +65,22 @@ class MediaSnifferWebViewClient(
                 else -> "video/mp4"
             }
 
+            val title = when {
+                lowerUrl.contains("m3u8") -> "HLS Stream"
+                lowerUrl.contains("mpd") -> "DASH Stream"
+                else -> "Web Video File"
+            }
+
             val sniffedMedia = SniffedMedia(
                 url = url,
                 mimeType = mimeType,
-                title = currentTitle
+                title = title
             )
 
-            viewPost {
+            // Safely post callback onto main UI looper without touching WebView object on IO thread
+            mainHandler.post {
                 onMediaDetected(sniffedMedia)
             }
-        }
-    }
-
-    private fun viewPost(action: () -> Unit) {
-        android.os.Handler(android.os.Looper.getMainLooper()).post {
-            action()
         }
     }
 

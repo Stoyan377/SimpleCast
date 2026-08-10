@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.*
@@ -34,6 +35,7 @@ fun DeviceDiscoveryBottomSheet(
     isScanning: Boolean,
     onScanRequested: () -> Unit,
     onDeviceSelected: (DlnaDevice) -> Unit,
+    onDisconnectRequested: () -> Unit,
     onDismiss: () -> Unit
 ) {
     ModalBottomSheet(
@@ -88,6 +90,60 @@ fun DeviceDiscoveryBottomSheet(
 
             Spacer(modifier = Modifier.height(20.dp))
 
+            // Active Connection Disconnect Card
+            if (selectedDevice != null) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = LgRedAccent.copy(alpha = 0.15f)),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Tv,
+                                contentDescription = null,
+                                tint = LgRedAccent,
+                                modifier = Modifier.size(32.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = selectedDevice.friendlyName,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = LgRedAccent
+                                )
+                                Text(
+                                    text = "Connected (${selectedDevice.ipAddress})",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
+
+                        Button(
+                            onClick = onDisconnectRequested,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF3D00)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.LinkOff, contentDescription = null)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Disconnect", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
             if (discoveredDevices.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -120,7 +176,7 @@ fun DeviceDiscoveryBottomSheet(
             } else {
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.heightIn(max = 300.dp)
+                    modifier = Modifier.heightIn(max = 280.dp)
                 ) {
                     items(discoveredDevices) { device ->
                         val isSelected = device.usn == selectedDevice?.usn

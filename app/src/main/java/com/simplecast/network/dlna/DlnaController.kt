@@ -132,10 +132,22 @@ class DlnaController {
     }
 
     private fun createDidlMetadata(mediaUrl: String, title: String, mediaType: MediaType, mimeType: String): String {
-        val upnpClass = when (mediaType) {
-            MediaType.VIDEO -> "object.item.videoItem"
-            MediaType.IMAGE -> "object.item.imageItem.photo"
-            MediaType.AUDIO -> "object.item.audioItem.musicTrack"
+        val (upnpClass, protocolInfo) = when (mediaType) {
+            MediaType.VIDEO -> Pair(
+                "object.item.videoItem",
+                "http-get:*:$mimeType:DLNA.ORG_PN=MP4_MED;DLNA.ORG_OP=01;DLNA.ORG_FLAGS=01500000000000000000000000000000"
+            )
+            MediaType.IMAGE -> {
+                val pn = if (mimeType.contains("png")) "PNG_LRG" else "JPEG_LRG"
+                Pair(
+                    "object.item.imageItem.photo",
+                    "http-get:*:$mimeType:DLNA.ORG_PN=$pn;DLNA.ORG_OP=01;DLNA.ORG_FLAGS=00D00000000000000000000000000000"
+                )
+            }
+            MediaType.AUDIO -> Pair(
+                "object.item.audioItem.musicTrack",
+                "http-get:*:$mimeType:DLNA.ORG_PN=MP3;DLNA.ORG_OP=01;DLNA.ORG_FLAGS=01500000000000000000000000000000"
+            )
         }
 
         return """
@@ -143,7 +155,7 @@ class DlnaController {
                 <item id="1" parentID="0" restricted="1">
                     <dc:title>${escapeXml(title)}</dc:title>
                     <upnp:class>$upnpClass</upnp:class>
-                    <res protocolInfo="http-get:*:$mimeType:*">$mediaUrl</res>
+                    <res protocolInfo="$protocolInfo">$mediaUrl</res>
                 </item>
             </DIDL-Lite>
         """.trimIndent()

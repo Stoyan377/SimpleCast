@@ -233,6 +233,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
             isScanning = isScanning,
             onScanRequested = { viewModel.startDeviceScan() },
             onDeviceSelected = { device -> viewModel.selectDevice(device) },
+            onDisconnectRequested = { viewModel.disconnectDevice() },
             onDismiss = { viewModel.toggleDevicePicker(false) }
         )
     }

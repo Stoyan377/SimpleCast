@@ -67,6 +67,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _showDevicePicker.value = false
     }
 
+    fun disconnectDevice() {
+        val device = _selectedDevice.value
+        viewModelScope.launch {
+            if (device != null) {
+                dlnaController.stop(device.controlUrl)
+            }
+            _selectedDevice.value = null
+            _playbackState.value = PlaybackState()
+            httpServer.clearMedia()
+            _showDevicePicker.value = false
+        }
+    }
+
     fun toggleDevicePicker(show: Boolean) {
         _showDevicePicker.value = show
     }
@@ -84,7 +97,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         val localStreamUrl = "http://$ip:8080/media/$mediaId"
         val mediaType = if (isVideo) MediaType.VIDEO else MediaType.IMAGE
-        val mimeType = if (isVideo) "video/mp4" else "image/jpeg"
+
+        val contentResolver = getApplication<Application>().contentResolver
+        val inferredMime = contentResolver.getType(uri) ?: if (isVideo) "video/mp4" else "image/jpeg"
 
         viewModelScope.launch {
             val success = dlnaController.setAvTransportUri(
@@ -92,7 +107,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 mediaUrl = localStreamUrl,
                 title = title,
                 mediaType = mediaType,
-                mimeType = mimeType
+                mimeType = inferredMime
             )
             if (success) {
                 dlnaController.play(device.controlUrl)
