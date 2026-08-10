@@ -2,6 +2,7 @@ package com.simplecast.ui
 
 import android.app.Application
 import android.net.Uri
+import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.simplecast.network.dlna.DlnaController
@@ -117,6 +118,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     mediaUrl = localStreamUrl,
                     mediaType = mediaType
                 )
+            } else {
+                showToast("Failed to send media to TV")
             }
         }
     }
@@ -129,21 +132,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         viewModelScope.launch {
-            val success = dlnaController.setAvTransportUri(
+            showToast("Casting to ${device.friendlyName}...")
+
+            // First stop any existing playback
+            dlnaController.stop(device.controlUrl)
+
+            // Strategy 1: Try with full DIDL-Lite metadata
+            var success = dlnaController.setAvTransportUri(
                 controlUrl = device.controlUrl,
                 mediaUrl = sniffedMedia.url,
                 title = sniffedMedia.title,
                 mediaType = MediaType.VIDEO,
                 mimeType = sniffedMedia.mimeType
             )
-            if (success) {
-                dlnaController.play(device.controlUrl)
-                _playbackState.value = PlaybackState(
-                    isPlaying = true,
-                    mediaTitle = sniffedMedia.title,
-                    mediaUrl = sniffedMedia.url,
-                    mediaType = MediaType.VIDEO
+
+            // Strategy 2: If metadata approach fails, try raw URL without metadata
+            // (LG webOS sometimes prefers bare URLs for web streams)
+            if (!success) {
+                success = dlnaController.setAvTransportUriRaw(
+                    controlUrl = device.controlUrl,
+                    mediaUrl = sniffedMedia.url
                 )
+            }
+
+            if (success) {
+                val playSuccess = dlnaController.play(device.controlUrl)
+                if (playSuccess) {
+                    _playbackState.value = PlaybackState(
+                        isPlaying = true,
+                        mediaTitle = sniffedMedia.title,
+                        mediaUrl = sniffedMedia.url,
+                        mediaType = MediaType.VIDEO
+                    )
+                    showToast("Playing on ${device.friendlyName}")
+                } else {
+                    showToast("URL accepted but playback failed – stream may be DRM-protected")
+                }
+            } else {
+                showToast("TV rejected this stream – try another URL or a direct MP4/M3U8 link")
             }
         }
     }
@@ -184,6 +210,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearSniffedMedia() {
         _sniffedMediaList.value = emptyList()
+    }
+
+    private fun showToast(message: String) {
+        val app = getApplication<Application>()
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            Toast.makeText(app, message, Toast.LENGTH_SHORT).show()
+        }
     }
 
     override fun onCleared() {
