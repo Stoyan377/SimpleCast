@@ -1,6 +1,8 @@
 package com.simplecast.ui.tabs
 
 import android.view.ViewGroup
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -10,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -17,8 +20,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.simplecast.network.ssdp.DlnaDevice
@@ -29,6 +36,7 @@ import com.simplecast.ui.theme.SurfaceVariantDark
 import com.simplecast.web.MediaSnifferJSBridge
 import com.simplecast.web.MediaSnifferWebViewClient
 import com.simplecast.web.SniffedMedia
+import java.io.ByteArrayInputStream
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,17 +47,37 @@ fun WebBrowserTab(
     onCastWebMedia: (SniffedMedia) -> Unit,
     onClearSniffed: () -> Unit
 ) {
-    var urlText by remember { mutableStateOf("https://m.youtube.com") }
-    var currentWebUrl by remember { mutableStateOf("https://m.youtube.com") }
+    val defaultUrl = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
+    var urlFieldValue by remember { mutableStateOf(TextFieldValue(defaultUrl)) }
+    var currentWebUrl by remember { mutableStateOf(defaultUrl) }
     var webViewInstance by remember { mutableStateOf<WebView?>(null) }
     var showSniffedSheet by remember { mutableStateOf(false) }
 
     val bookmarks = listOf(
-        "YouTube" to "https://m.youtube.com",
-        "Vimeo" to "https://vimeo.com/watch",
-        "Twitch" to "https://m.twitch.tv",
         "Sample HLS" to "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
     )
+
+    // Ad-blocking domains
+    val adHosts = remember {
+        setOf(
+            "doubleclick.net", "googlesyndication.com", "googleadservices.com",
+            "google-analytics.com", "googletagmanager.com", "facebook.net",
+            "facebook.com/tr", "adservice.google.com", "pagead2.googlesyndication.com",
+            "ads.yahoo.com", "ad.doubleclick.net", "amazon-adsystem.com",
+            "moatads.com", "scorecardresearch.com", "quantserve.com",
+            "adsrvr.org", "adnxs.com", "rubiconproject.com", "pubmatic.com",
+            "casalemedia.com", "taboola.com", "outbrain.com", "criteo.com",
+            "serving-sys.com", "smartadserver.com", "smaato.net",
+            "advertising.com", "adcolony.com", "unity3d.com/ads",
+            "popads.net", "popcash.net", "propellerads.com",
+            "adf.ly", "exoclick.com", "trafficjunky.com",
+            "zedo.com", "revcontent.com", "mgid.com",
+            "bidswitch.net", "openx.net", "indexexchange.com",
+            "sharethrough.com", "media.net", "inmobi.com",
+            "imasdk.googleapis.com", "tpc.googlesyndication.com",
+            "securepubads.g.doubleclick.net"
+        )
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Address Bar & Controls
@@ -72,12 +100,20 @@ fun WebBrowserTab(
                     }
 
                     TextField(
-                        value = urlText,
-                        onValueChange = { urlText = it },
+                        value = urlFieldValue,
+                        onValueChange = { urlFieldValue = it },
                         modifier = Modifier
                             .weight(1f)
                             .height(50.dp)
-                            .clip(RoundedCornerShape(12.dp)),
+                            .clip(RoundedCornerShape(12.dp))
+                            .onFocusChanged { focusState ->
+                                if (focusState.isFocused) {
+                                    // Select all text when the field gains focus
+                                    urlFieldValue = urlFieldValue.copy(
+                                        selection = TextRange(0, urlFieldValue.text.length)
+                                    )
+                                }
+                            },
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = SurfaceVariantDark,
                             unfocusedContainerColor = SurfaceVariantDark,
@@ -85,16 +121,17 @@ fun WebBrowserTab(
                             unfocusedIndicatorColor = Color.Transparent
                         ),
                         singleLine = true,
-                        placeholder = { Text("Enter URL...") }
+                        placeholder = { Text("Enter URL or paste M3U8 link...") }
                     )
 
                     Spacer(modifier = Modifier.width(4.dp))
 
                     IconButton(
                         onClick = {
-                            val formatted = if (!urlText.startsWith("http://") && !urlText.startsWith("https://")) {
-                                "https://$urlText"
-                            } else urlText
+                            val text = urlFieldValue.text
+                            val formatted = if (!text.startsWith("http://") && !text.startsWith("https://")) {
+                                "https://$text"
+                            } else text
                             currentWebUrl = formatted
                             webViewInstance?.loadUrl(formatted)
                         },
@@ -117,7 +154,7 @@ fun WebBrowserTab(
                         FilterChip(
                             selected = currentWebUrl == link,
                             onClick = {
-                                urlText = link
+                                urlFieldValue = TextFieldValue(link)
                                 currentWebUrl = link
                                 webViewInstance?.loadUrl(link)
                             },
@@ -136,8 +173,55 @@ fun WebBrowserTab(
         Box(modifier = Modifier.weight(1f)) {
             AndroidView(
                 factory = { context ->
-                    val client = MediaSnifferWebViewClient { sniffedMedia ->
+                    val snifferClient = MediaSnifferWebViewClient { sniffedMedia ->
                         onMediaSniffed(sniffedMedia)
+                    }
+
+                    // Create an ad-blocking wrapper that delegates to the sniffer client
+                    val adBlockClient = object : android.webkit.WebViewClient() {
+                        override fun shouldInterceptRequest(
+                            view: WebView?,
+                            request: WebResourceRequest?
+                        ): WebResourceResponse? {
+                            val reqUrl = request?.url?.toString() ?: ""
+                            val reqHost = request?.url?.host ?: ""
+
+                            // Block known ad domains
+                            if (adHosts.any { adHost -> reqHost.contains(adHost) }) {
+                                return WebResourceResponse(
+                                    "text/plain", "utf-8",
+                                    ByteArrayInputStream("".toByteArray())
+                                )
+                            }
+
+                            // Also block common ad URL patterns
+                            val lowerUrl = reqUrl.lowercase()
+                            if (lowerUrl.contains("/ads/") || lowerUrl.contains("/ad/") ||
+                                lowerUrl.contains("banner") || lowerUrl.contains("pop-up") ||
+                                lowerUrl.contains("interstitial") || lowerUrl.contains("prebid") ||
+                                lowerUrl.contains("adserver")) {
+                                return WebResourceResponse(
+                                    "text/plain", "utf-8",
+                                    ByteArrayInputStream("".toByteArray())
+                                )
+                            }
+
+                            // Delegate to sniffer client to detect media
+                            return snifferClient.shouldInterceptRequest(view, request)
+                        }
+
+                        override fun onLoadResource(view: WebView?, url: String?) {
+                            snifferClient.onLoadResource(view, url)
+                        }
+
+                        override fun onPageFinished(view: WebView?, url: String?) {
+                            snifferClient.onPageFinished(view, url)
+                            // Update the address bar with the actual loaded URL
+                            if (url != null) {
+                                urlFieldValue = TextFieldValue(url)
+                                currentWebUrl = url
+                            }
+                        }
                     }
 
                     WebView(context).apply {
@@ -153,12 +237,12 @@ fun WebBrowserTab(
 
                         addJavascriptInterface(
                             MediaSnifferJSBridge { jsUrl, jsTitle ->
-                                client.checkAndNotifyMedia(jsUrl, jsTitle)
+                                snifferClient.checkAndNotifyMedia(jsUrl, jsTitle)
                             },
                             "AndroidMediaSniffer"
                         )
 
-                        webViewClient = client
+                        webViewClient = adBlockClient
                         loadUrl(currentWebUrl)
                         webViewInstance = this
                     }
