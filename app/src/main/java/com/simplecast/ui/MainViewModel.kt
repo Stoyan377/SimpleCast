@@ -131,24 +131,50 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
+        val ip = localIpAddress
+        if (ip == null) {
+            showToast("Cannot determine local IP address")
+            return
+        }
+
         viewModelScope.launch {
             showToast("Casting to ${device.friendlyName}...")
 
             // First stop any existing playback
             dlnaController.stop(device.controlUrl)
 
-            // Strategy 1: Try with full DIDL-Lite metadata
+            // Proxy the web stream through our local HTTP server
+            // This converts HTTPS → HTTP which LG webOS DLNA can handle
+            val encodedUrl = java.net.URLEncoder.encode(sniffedMedia.url, "UTF-8")
+            val proxyUrl = "http://$ip:8080/proxy/$encodedUrl"
+
+            // Use video/mp4 as mime for DLNA regardless of original stream type
+            // The proxy handles the actual content type
+            val dlnaMime = when {
+                sniffedMedia.mimeType.contains("mpegURL") || sniffedMedia.mimeType.contains("m3u8") -> "video/mp4"
+                sniffedMedia.mimeType.contains("dash") -> "video/mp4"
+                else -> sniffedMedia.mimeType
+            }
+
+            // Strategy 1: Try with DIDL-Lite metadata via proxy
             var success = dlnaController.setAvTransportUri(
                 controlUrl = device.controlUrl,
-                mediaUrl = sniffedMedia.url,
+                mediaUrl = proxyUrl,
                 title = sniffedMedia.title,
                 mediaType = MediaType.VIDEO,
-                mimeType = sniffedMedia.mimeType
+                mimeType = dlnaMime
             )
 
-            // Strategy 2: If metadata approach fails, try raw URL without metadata
-            // (LG webOS sometimes prefers bare URLs for web streams)
+            // Strategy 2: Try raw URL without metadata via proxy
             if (!success) {
+                success = dlnaController.setAvTransportUriRaw(
+                    controlUrl = device.controlUrl,
+                    mediaUrl = proxyUrl
+                )
+            }
+
+            // Strategy 3: Last resort – try the original URL directly (maybe HTTP)
+            if (!success && !sniffedMedia.url.startsWith("https")) {
                 success = dlnaController.setAvTransportUriRaw(
                     controlUrl = device.controlUrl,
                     mediaUrl = sniffedMedia.url
@@ -161,7 +187,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _playbackState.value = PlaybackState(
                         isPlaying = true,
                         mediaTitle = sniffedMedia.title,
-                        mediaUrl = sniffedMedia.url,
+                        mediaUrl = proxyUrl,
                         mediaType = MediaType.VIDEO
                     )
                     showToast("Playing on ${device.friendlyName}")
