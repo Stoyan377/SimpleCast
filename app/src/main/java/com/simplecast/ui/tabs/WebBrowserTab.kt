@@ -26,6 +26,7 @@ import com.simplecast.ui.theme.LgRedAccent
 import com.simplecast.ui.theme.NeonCyan
 import com.simplecast.ui.theme.SurfaceDark
 import com.simplecast.ui.theme.SurfaceVariantDark
+import com.simplecast.web.MediaSnifferJSBridge
 import com.simplecast.web.MediaSnifferWebViewClient
 import com.simplecast.web.SniffedMedia
 
@@ -135,6 +136,10 @@ fun WebBrowserTab(
         Box(modifier = Modifier.weight(1f)) {
             AndroidView(
                 factory = { context ->
+                    val client = MediaSnifferWebViewClient { sniffedMedia ->
+                        onMediaSniffed(sniffedMedia)
+                    }
+
                     WebView(context).apply {
                         layoutParams = ViewGroup.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -144,18 +149,21 @@ fun WebBrowserTab(
                         settings.domStorageEnabled = true
                         settings.mediaPlaybackRequiresUserGesture = false
                         settings.allowFileAccess = true
+                        settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
 
-                        webViewClient = MediaSnifferWebViewClient { sniffedMedia ->
-                            onMediaSniffed(sniffedMedia)
-                        }
+                        addJavascriptInterface(
+                            MediaSnifferJSBridge { jsUrl, jsTitle ->
+                                client.checkAndNotifyMedia(jsUrl, jsTitle)
+                            },
+                            "AndroidMediaSniffer"
+                        )
 
+                        webViewClient = client
                         loadUrl(currentWebUrl)
                         webViewInstance = this
                     }
                 },
-                update = { webView ->
-                    // Keep instance reference updated
-                },
+                update = { _ -> },
                 modifier = Modifier.fillMaxSize()
             )
 
@@ -172,7 +180,7 @@ fun WebBrowserTab(
                     },
                     text = {
                         Text(
-                            text = "${sniffedMediaList.size} Direct Videos Sniffed",
+                            text = "${sniffedMediaList.size} Video Streams Found",
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
@@ -209,7 +217,7 @@ fun WebBrowserTab(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "Tap any stream to cast to LG TV",
+                            text = "Tap the recommended stream to cast to LG TV",
                             style = MaterialTheme.typography.bodyMedium
                         )
                     }
@@ -224,13 +232,20 @@ fun WebBrowserTab(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
+                // Sort streams: recommended first
+                val sortedList = remember(sniffedMediaList) {
+                    sniffedMediaList.sortedByDescending { it.isRecommended }
+                }
+
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.heightIn(max = 340.dp)
+                    modifier = Modifier.heightIn(max = 360.dp)
                 ) {
-                    items(sniffedMediaList) { media ->
+                    items(sortedList) { media ->
                         Card(
-                            colors = CardDefaults.cardColors(containerColor = SurfaceVariantDark),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (media.isRecommended) SurfaceVariantDark else SurfaceDark
+                            ),
                             shape = RoundedCornerShape(16.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -239,41 +254,78 @@ fun WebBrowserTab(
                                     showSniffedSheet = false
                                 }
                         ) {
-                            Row(
+                            Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                    .padding(16.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.PlayCircle,
-                                    contentDescription = null,
-                                    tint = NeonCyan,
-                                    modifier = Modifier.size(36.dp)
-                                )
-
-                                Spacer(modifier = Modifier.width(14.dp))
-
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = media.title,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    Text(
-                                        text = "${media.mimeType} • ${media.url.take(45)}...",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        maxLines = 1
-                                    )
+                                if (media.isRecommended) {
+                                    Surface(
+                                        color = LgRedAccent,
+                                        shape = RoundedCornerShape(6.dp),
+                                        modifier = Modifier.padding(bottom = 8.dp)
+                                    ) {
+                                        Text(
+                                            text = "RECOMMENDED STREAM",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                        )
+                                    }
                                 }
 
-                                Spacer(modifier = Modifier.width(8.dp))
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.PlayCircle,
+                                        contentDescription = null,
+                                        tint = if (media.isRecommended) LgRedAccent else NeonCyan,
+                                        modifier = Modifier.size(36.dp)
+                                    )
 
-                                Icon(
-                                    imageVector = Icons.Default.Cast,
-                                    contentDescription = "Cast",
-                                    tint = LgRedAccent
-                                )
+                                    Spacer(modifier = Modifier.width(14.dp))
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = media.title,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+
+                                        Spacer(modifier = Modifier.height(2.dp))
+
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Surface(
+                                                color = SurfaceVariantDark,
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = media.quality,
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = NeonCyan,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = "${media.domain} • ${media.mimeType}",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.width(8.dp))
+
+                                    Icon(
+                                        imageVector = Icons.Default.Cast,
+                                        contentDescription = "Cast",
+                                        tint = LgRedAccent
+                                    )
+                                }
                             }
                         }
                     }
