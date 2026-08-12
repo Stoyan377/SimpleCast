@@ -464,19 +464,39 @@ class LocalHttpServer(
 
         function escapeHtml(str) {
             return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-        }
-
         function renderList(items) {
             countBadge.innerText = 'Showing ' + items.length + ' channels & streams';
             grid.innerHTML = items.map(function(ch) {
-                return '<div class="card">' +
+                return '<div class="card" id="card-' + ch.id + '">' +
                     '<div class="card-header">' +
                         '<div class="card-title">' + escapeHtml(ch.title) + '</div>' +
                         '<div class="card-group">' + escapeHtml(ch.group) + '</div>' +
                     '</div>' +
-                    '<a class="play-btn" href="' + ch.url + '">▶ Play / Cast Stream</a>' +
+                    '<div id="player-box-' + ch.id + '"></div>' +
+                    '<button class="play-btn" onclick="playAndCast(' + ch.id + ', \'' + escapeJs(ch.url) + '\', \'' + escapeJs(ch.title) + '\')">▶ Play & Cast Stream</button>' +
                 '</div>';
             }).join('');
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        }
+
+        function escapeJs(str) {
+            return str.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+        }
+
+        function playAndCast(id, url, title) {
+            // Trigger Android Media Sniffer JS bridge
+            if (window.AndroidMediaSniffer) {
+                window.AndroidMediaSniffer.onVideoFound(url, title);
+            }
+
+            // Embed video player in card
+            const playerBox = document.getElementById('player-box-' + id);
+            if (playerBox) {
+                playerBox.innerHTML = '<video controls autoplay style="width:100%; border-radius:8px; margin:8px 0; background:#000;" src="' + url + '"></video>';
+            }
         }
 
         function filterChannels() {
