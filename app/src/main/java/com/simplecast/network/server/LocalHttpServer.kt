@@ -412,15 +412,16 @@ class LocalHttpServer(
     }
 
     private fun generateIptvHtml(items: List<Triple<String, String, String>>): String {
-        val jsonArray = java.lang.StringBuilder("[")
-        items.forEachIndexed { index, triple ->
-            val cleanTitle = triple.first.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ").replace("\r", " ")
-            val cleanUrl = triple.second.replace("\\", "\\\\").replace("\"", "\\\"")
-            val cleanGroup = triple.third.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ").replace("\r", " ")
-            jsonArray.append("{\"id\":$index,\"title\":\"$cleanTitle\",\"url\":\"$cleanUrl\",\"group\":\"$cleanGroup\"}")
-            if (index < items.size - 1) jsonArray.append(",")
+        val jsonArray = org.json.JSONArray()
+        for ((index, item) in items.withIndex()) {
+            val obj = org.json.JSONObject()
+            obj.put("id", index)
+            obj.put("title", item.first)
+            obj.put("url", item.second)
+            obj.put("group", item.third)
+            jsonArray.put(obj)
         }
-        jsonArray.append("]")
+        val jsonString = jsonArray.toString()
 
         return """<!DOCTYPE html>
 <html lang="en">
@@ -457,14 +458,33 @@ class LocalHttpServer(
     <div class="grid" id="channelGrid"></div>
 
     <script>
-        const channels = $jsonArray;
+        let channels = [];
+        try {
+            channels = $jsonString;
+        } catch(e) {
+            console.error("Parse error", e);
+        }
+
         const grid = document.getElementById('channelGrid');
         const countBadge = document.getElementById('countBadge');
         const searchInput = document.getElementById('searchInput');
 
         function escapeHtml(str) {
-            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+            if (!str) return '';
+            return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        }
+
+        function escapeJs(str) {
+            if (!str) return '';
+            return String(str).replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/"/g, '\\"');
+        }
+
         function renderList(items) {
+            if (!items || items.length === 0) {
+                countBadge.innerText = 'No channels found';
+                grid.innerHTML = '<div style="color:#8a8aa3; padding:20px; text-align:center;">No matching streams found</div>';
+                return;
+            }
             countBadge.innerText = 'Showing ' + items.length + ' channels & streams';
             grid.innerHTML = items.map(function(ch) {
                 return '<div class="card" id="card-' + ch.id + '">' +
@@ -478,21 +498,10 @@ class LocalHttpServer(
             }).join('');
         }
 
-        function escapeHtml(str) {
-            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-        }
-
-        function escapeJs(str) {
-            return str.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-        }
-
         function playAndCast(id, url, title) {
-            // Trigger Android Media Sniffer JS bridge
             if (window.AndroidMediaSniffer) {
                 window.AndroidMediaSniffer.onVideoFound(url, title);
             }
-
-            // Embed video player in card
             const playerBox = document.getElementById('player-box-' + id);
             if (playerBox) {
                 playerBox.innerHTML = '<video controls autoplay style="width:100%; border-radius:8px; margin:8px 0; background:#000;" src="' + url + '"></video>';
@@ -506,11 +515,13 @@ class LocalHttpServer(
                 return;
             }
             const filtered = channels.filter(function(ch) {
-                return ch.title.toLowerCase().indexOf(query) !== -1 || ch.group.toLowerCase().indexOf(query) !== -1;
+                return (ch.title && ch.title.toLowerCase().indexOf(query) !== -1) ||
+                       (ch.group && ch.group.toLowerCase().indexOf(query) !== -1);
             });
             renderList(filtered.slice(0, 300));
         }
 
+        // Initial render
         renderList(channels.slice(0, 300));
     </script>
 </body>
