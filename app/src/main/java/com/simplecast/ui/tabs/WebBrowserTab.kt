@@ -12,7 +12,9 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.selection.LocalTextSelectionColors
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -22,11 +24,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.simplecast.network.ssdp.DlnaDevice
 import com.simplecast.ui.theme.LgRedAccent
@@ -57,7 +60,7 @@ fun WebBrowserTab(
     val bookmarks = listOf(
         "Google" to "https://www.google.com",
         "Sample HLS" to "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
-        "Free IPTV" to "https://iptv-org.github.io"
+        "Free Live TV" to "https://wwitv.com"
     )
 
     fun loadUrlFromInput() {
@@ -114,13 +117,11 @@ fun WebBrowserTab(
                         Icon(imageVector = Icons.Default.Refresh, contentDescription = "Refresh", tint = NeonCyan)
                     }
 
-                    TextField(
+                    BasicTextField(
                         value = urlFieldValue,
                         onValueChange = { urlFieldValue = it },
                         modifier = Modifier
                             .weight(1f)
-                            .height(50.dp)
-                            .clip(RoundedCornerShape(12.dp))
                             .onFocusChanged { focusState ->
                                 isAddressBarFocused = focusState.isFocused
                                 if (focusState.isFocused && urlFieldValue.text.isNotEmpty()) {
@@ -129,28 +130,47 @@ fun WebBrowserTab(
                                     )
                                 }
                             },
-                        trailingIcon = {
-                            if (urlFieldValue.text.isNotEmpty()) {
-                                IconButton(onClick = { urlFieldValue = TextFieldValue("") }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Clear,
-                                        contentDescription = "Clear address bar",
-                                        tint = Color.Gray
-                                    )
+                        singleLine = true,
+                        textStyle = LocalTextStyle.current.copy(color = Color.White, fontSize = 14.sp),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                        keyboardActions = KeyboardActions(onGo = { loadUrlFromInput() }),
+                        decorationBox = { innerTextField ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(44.dp)
+                                    .background(SurfaceVariantDark, RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(modifier = Modifier.weight(1f)) {
+                                    if (urlFieldValue.text.isEmpty()) {
+                                        Text(
+                                            text = "Search or type web address...",
+                                            color = Color.Gray,
+                                            fontSize = 14.sp
+                                        )
+                                    }
+                                    innerTextField()
+                                }
+                                if (urlFieldValue.text.isNotEmpty()) {
+                                    IconButton(
+                                        onClick = { urlFieldValue = TextFieldValue("") },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Clear,
+                                            contentDescription = "Clear",
+                                            tint = Color.Gray,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
                                 }
                             }
-                        },
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = SurfaceVariantDark,
-                            unfocusedContainerColor = SurfaceVariantDark,
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent
-                        ),
-                        singleLine = true,
-                        placeholder = { Text("Search or type web address...") }
+                        }
                     )
 
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
 
                     IconButton(
                         onClick = { loadUrlFromInput() },
