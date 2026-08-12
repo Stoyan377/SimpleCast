@@ -47,15 +47,30 @@ fun WebBrowserTab(
     onCastWebMedia: (SniffedMedia) -> Unit,
     onClearSniffed: () -> Unit
 ) {
-    val defaultUrl = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
+    val defaultUrl = "https://www.google.com"
     var urlFieldValue by remember { mutableStateOf(TextFieldValue(defaultUrl)) }
     var currentWebUrl by remember { mutableStateOf(defaultUrl) }
     var webViewInstance by remember { mutableStateOf<WebView?>(null) }
     var showSniffedSheet by remember { mutableStateOf(false) }
+    var isAddressBarFocused by remember { mutableStateOf(false) }
 
     val bookmarks = listOf(
-        "Sample HLS" to "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8"
+        "Google" to "https://www.google.com",
+        "Sample HLS" to "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
+        "Free IPTV" to "https://iptv-org.github.io"
     )
+
+    fun loadUrlFromInput() {
+        val rawText = urlFieldValue.text.trim()
+        if (rawText.isEmpty()) return
+        val formatted = when {
+            rawText.startsWith("http://") || rawText.startsWith("https://") -> rawText
+            rawText.contains(".") && !rawText.contains(" ") -> "https://$rawText"
+            else -> "https://www.google.com/search?q=" + java.net.URLEncoder.encode(rawText, "UTF-8")
+        }
+        currentWebUrl = formatted
+        webViewInstance?.loadUrl(formatted)
+    }
 
     // Ad-blocking domains
     val adHosts = remember {
@@ -107,13 +122,24 @@ fun WebBrowserTab(
                             .height(50.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .onFocusChanged { focusState ->
-                                if (focusState.isFocused) {
-                                    // Select all text when the field gains focus
+                                isAddressBarFocused = focusState.isFocused
+                                if (focusState.isFocused && urlFieldValue.text.isNotEmpty()) {
                                     urlFieldValue = urlFieldValue.copy(
                                         selection = TextRange(0, urlFieldValue.text.length)
                                     )
                                 }
                             },
+                        trailingIcon = {
+                            if (urlFieldValue.text.isNotEmpty()) {
+                                IconButton(onClick = { urlFieldValue = TextFieldValue("") }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Clear,
+                                        contentDescription = "Clear address bar",
+                                        tint = Color.Gray
+                                    )
+                                }
+                            }
+                        },
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = SurfaceVariantDark,
                             unfocusedContainerColor = SurfaceVariantDark,
@@ -121,20 +147,13 @@ fun WebBrowserTab(
                             unfocusedIndicatorColor = Color.Transparent
                         ),
                         singleLine = true,
-                        placeholder = { Text("Enter URL or paste M3U8 link...") }
+                        placeholder = { Text("Search or type web address...") }
                     )
 
                     Spacer(modifier = Modifier.width(4.dp))
 
                     IconButton(
-                        onClick = {
-                            val text = urlFieldValue.text
-                            val formatted = if (!text.startsWith("http://") && !text.startsWith("https://")) {
-                                "https://$text"
-                            } else text
-                            currentWebUrl = formatted
-                            webViewInstance?.loadUrl(formatted)
-                        },
+                        onClick = { loadUrlFromInput() },
                         modifier = Modifier
                             .clip(CircleShape)
                             .background(LgRedAccent)
@@ -219,8 +238,8 @@ fun WebBrowserTab(
 
                         override fun onPageFinished(view: WebView?, url: String?) {
                             snifferClient.onPageFinished(view, url)
-                            // Update the address bar with the actual loaded URL
-                            if (url != null) {
+                            // Update the address bar with the actual loaded URL if not editing
+                            if (url != null && !isAddressBarFocused) {
                                 urlFieldValue = TextFieldValue(url)
                                 currentWebUrl = url
                             }
