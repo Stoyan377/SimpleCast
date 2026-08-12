@@ -60,7 +60,7 @@ fun WebBrowserTab(
     val bookmarks = listOf(
         "Google" to "https://www.google.com",
         "Sample HLS" to "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
-        "Free Live TV" to "https://wwitv.com"
+        "Free IPTV" to "http://127.0.0.1:8080/iptv"
     )
 
     fun loadUrlFromInput() {

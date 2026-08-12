@@ -25,6 +25,11 @@ class LocalHttpServer(
     override fun serve(session: IHTTPSession): Response {
         val uri = session.uri
 
+        // IPTV Web Portal endpoint
+        if (uri.startsWith("/iptv")) {
+            return serveIptvPortal()
+        }
+
         // Reverse proxy endpoint for web streams
         if (uri.startsWith("/proxy/")) {
             return serveProxy(session)
@@ -346,5 +351,149 @@ class LocalHttpServer(
         } catch (e: Exception) {
             "127.0.0.1"
         }
+    }
+
+    private var cachedIptvHtml: String? = null
+    private var lastIptvFetchTime: Long = 0
+
+    private fun serveIptvPortal(): Response {
+        val currentTime = System.currentTimeMillis()
+        if (cachedIptvHtml == null || (currentTime - lastIptvFetchTime) > 15 * 60 * 1000L) {
+            try {
+                val url = URL("https://iptv.org.ua/iptv/avto-full.m3u")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.connectTimeout = 10000
+                conn.readTimeout = 15000
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13)")
+
+                val lines = conn.inputStream.bufferedReader(Charsets.UTF_8).readLines()
+                conn.disconnect()
+
+                val itemsList = ArrayList<Triple<String, String, String>>()
+                var currentTitle = ""
+                var currentGroup = "General"
+
+                for (line in lines) {
+                    val trimmed = line.trim()
+                    if (trimmed.startsWith("#EXTINF:")) {
+                        currentGroup = if (trimmed.contains("group-title=\"")) {
+                            trimmed.substringAfter("group-title=\"").substringBefore("\"")
+                        } else {
+                            "General"
+                        }
+                        currentTitle = trimmed.substringAfter(",").trim()
+                        if (currentTitle.isEmpty()) currentTitle = "Stream ${itemsList.size + 1}"
+                    } else if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+                        val titleToUse = if (currentTitle.isNotEmpty()) currentTitle else "Stream ${itemsList.size + 1}"
+                        itemsList.add(Triple(titleToUse, trimmed, currentGroup))
+                        currentTitle = ""
+                    }
+                }
+
+                if (itemsList.isNotEmpty()) {
+                    cachedIptvHtml = generateIptvHtml(itemsList)
+                    lastIptvFetchTime = currentTime
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+        val htmlContent = cachedIptvHtml ?: "<html><body style='background:#12121c;color:white;font-family:sans-serif;padding:20dp;'><h2>IPTV Playlist Loading Failed</h2><p>Could not connect to iptv.org.ua list. Please try again.</p></body></html>"
+        val htmlBytes = htmlContent.toByteArray(Charsets.UTF_8)
+        val res = newFixedLengthResponse(
+            Response.Status.OK,
+            "text/html; charset=utf-8",
+            htmlContent.byteInputStream(),
+            htmlBytes.size.toLong()
+        )
+        res.addHeader("Cache-Control", "no-cache")
+        return res
+    }
+
+    private fun generateIptvHtml(items: List<Triple<String, String, String>>): String {
+        val jsonArray = java.lang.StringBuilder("[")
+        items.forEachIndexed { index, triple ->
+            val cleanTitle = triple.first.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ").replace("\r", " ")
+            val cleanUrl = triple.second.replace("\\", "\\\\").replace("\"", "\\\"")
+            val cleanGroup = triple.third.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ").replace("\r", " ")
+            jsonArray.append("{\"id\":$index,\"title\":\"$cleanTitle\",\"url\":\"$cleanUrl\",\"group\":\"$cleanGroup\"}")
+            if (index < items.size - 1) jsonArray.append(",")
+        }
+        jsonArray.append("]")
+
+        return """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Free IPTV Stream List</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background-color: #0e0e17; color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 12px; }
+        .header { text-align: center; padding: 12px 0 16px; border-bottom: 1px solid #1a1a2e; margin-bottom: 16px; }
+        .title { font-size: 22px; font-weight: 800; color: #ff3b47; margin-bottom: 4px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .subtitle { font-size: 13px; color: #8a8aa3; }
+        .search-box { width: 100%; padding: 12px 16px; border-radius: 12px; border: 1px solid #2a2a40; background: #1a1a2e; color: #fff; font-size: 15px; outline: none; margin-bottom: 16px; }
+        .search-box:focus { border-color: #ff3b47; }
+        .count-badge { font-size: 12px; color: #00f2fe; margin-bottom: 12px; display: inline-block; font-weight: 600; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+        .card { background: #181828; border-radius: 12px; padding: 12px 14px; border: 1px solid #252538; display: flex; flex-direction: column; justify-content: space-between; transition: transform 0.15s ease; }
+        .card:active { transform: scale(0.98); }
+        .card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+        .card-title { font-size: 14px; font-weight: 600; color: #e2e2ee; word-break: break-word; line-height: 1.3; }
+        .card-group { font-size: 10px; background: #2b2b45; color: #00f2fe; padding: 3px 6px; border-radius: 6px; text-transform: uppercase; font-weight: 700; white-space: nowrap; }
+        .play-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: #ff3b47; color: #ffffff; text-decoration: none; padding: 8px 12px; border-radius: 8px; font-size: 13px; font-weight: 700; margin-top: 6px; border: none; cursor: pointer; }
+        .play-btn:hover { background: #e02d38; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="title">📺 IPTV Streams & Movies</div>
+        <div class="subtitle">Tap any stream to load & cast directly to your LG TV</div>
+    </div>
+    <input type="text" id="searchInput" class="search-box" placeholder="🔍 Search channels, movies, series..." oninput="filterChannels()">
+    <div class="count-badge" id="countBadge">Loading channels...</div>
+    <div class="grid" id="channelGrid"></div>
+
+    <script>
+        const channels = $jsonArray;
+        const grid = document.getElementById('channelGrid');
+        const countBadge = document.getElementById('countBadge');
+        const searchInput = document.getElementById('searchInput');
+
+        function escapeHtml(str) {
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        }
+
+        function renderList(items) {
+            countBadge.innerText = 'Showing ' + items.length + ' channels & streams';
+            grid.innerHTML = items.map(function(ch) {
+                return '<div class="card">' +
+                    '<div class="card-header">' +
+                        '<div class="card-title">' + escapeHtml(ch.title) + '</div>' +
+                        '<div class="card-group">' + escapeHtml(ch.group) + '</div>' +
+                    '</div>' +
+                    '<a class="play-btn" href="' + ch.url + '">▶ Play / Cast Stream</a>' +
+                '</div>';
+            }).join('');
+        }
+
+        function filterChannels() {
+            const query = searchInput.value.toLowerCase().trim();
+            if (!query) {
+                renderList(channels.slice(0, 300));
+                return;
+            }
+            const filtered = channels.filter(function(ch) {
+                return ch.title.toLowerCase().indexOf(query) !== -1 || ch.group.toLowerCase().indexOf(query) !== -1;
+            });
+            renderList(filtered.slice(0, 300));
+        }
+
+        renderList(channels.slice(0, 300));
+    </script>
+</body>
+</html>"""
     }
 }
