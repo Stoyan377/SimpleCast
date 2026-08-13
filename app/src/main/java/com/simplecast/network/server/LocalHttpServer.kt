@@ -12,7 +12,7 @@ class LocalHttpServer(
     port: Int = 8080
 ) : NanoHTTPD(port) {
 
-    private val mediaMap = mutableMapOf<String, Uri>()
+    private val mediaMap = java.util.concurrent.ConcurrentHashMap<String, Uri>()
 
     fun registerMedia(id: String, uri: Uri) {
         mediaMap[id] = uri
@@ -62,12 +62,22 @@ class LocalHttpServer(
                 }
             }
 
+            // Normalize mime type: HEVC content is served in an MP4 container
+            if (mimeType.contains("hevc", ignoreCase = true) || mimeType.contains("h265", ignoreCase = true)) {
+                mimeType = "video/mp4"
+            }
+
             val isImage = mimeType.startsWith("image/")
+            val isVideo = mimeType.startsWith("video/")
 
             // Determine DLNA features header
             val dlnaFeatures = if (isImage) {
                 val pn = if (mimeType.contains("png")) "PNG_LRG" else "JPEG_LRG"
                 "DLNA.ORG_PN=$pn;DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=00D00000000000000000000000000000"
+            } else if (isVideo && mimeType.contains("mp4")) {
+                // AVC_MP4_MP_HD profile tells Android TV / Philips DLNA renderer that this is
+                // an H.264 Main Profile MP4 file, preventing "format not supported" errors
+                "DLNA.ORG_PN=AVC_MP4_MP_HD;DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000"
             } else {
                 "DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000"
             }
@@ -124,7 +134,14 @@ class LocalHttpServer(
                 } else {
                     val contentLength = end - start + 1
                     val inputStream = openFreshStream()
-                    inputStream?.skip(start)
+                    if (inputStream != null) {
+                        var remaining = start
+                        while (remaining > 0) {
+                            val skipped = inputStream.skip(remaining)
+                            if (skipped <= 0) break
+                            remaining -= skipped
+                        }
+                    }
 
                     val res = newFixedLengthResponse(
                         Response.Status.PARTIAL_CONTENT,
@@ -488,7 +505,7 @@ class LocalHttpServer(
 <body>
     <div class="header">
         <div class="title">📺 IPTV Streams & Movies</div>
-        <div class="subtitle">Tap any stream to load & cast directly to your LG TV</div>
+        <div class="subtitle">Tap any stream to load & cast directly to your Smart TV</div>
     </div>
     <input type="text" id="searchInput" class="search-box" placeholder="🔍 Search channels, movies, series..." oninput="filterChannels()">
     <div class="count-badge" id="countBadge">Loading channels...</div>

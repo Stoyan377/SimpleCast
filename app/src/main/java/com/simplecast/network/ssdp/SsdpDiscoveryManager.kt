@@ -18,8 +18,8 @@ import javax.xml.parsers.DocumentBuilderFactory
 data class DlnaDevice(
     val usn: String,
     val friendlyName: String,
-    val manufacturer: String = "LG Electronics",
-    val modelName: String = "LG webOS TV",
+    val manufacturer: String = "Unknown",
+    val modelName: String = "Smart TV",
     val locationUrl: String,
     val controlUrl: String,
     val ipAddress: String,
@@ -35,13 +35,12 @@ data class DlnaDevice(
         get() {
             val m = "$manufacturer $modelName $friendlyName".lowercase()
             return m.contains("android") || m.contains("google") ||
-                m.contains("sony") || m.contains("bravia") ||
-                m.contains("tcl") || m.contains("xiaomi") ||
-                m.contains("hisense") || m.contains("philips") ||
-                m.contains("tp vision") || m.contains("samsung") ||
-                m.contains("tizen") || m.contains("chromecast") ||
-                m.contains("vidaa")
+                m.contains("chromecast")
         }
+
+    /** True for any non-LG TV (Samsung Tizen, Hisense Vidaa, Android TV, etc.) */
+    val isNonLgTv: Boolean
+        get() = !isLgWebOs
 }
 
 class SsdpDiscoveryManager(private val context: Context) {

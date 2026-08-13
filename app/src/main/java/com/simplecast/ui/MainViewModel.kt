@@ -57,6 +57,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             httpServer.start()
         } catch (e: Exception) {
             e.printStackTrace()
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                Toast.makeText(getApplication(), "HTTP server failed to start: ${e.message}", Toast.LENGTH_LONG).show()
+            }
         }
         startDeviceScan()
     }
@@ -97,7 +100,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        val ip = localIpAddress ?: return
+        val ip = localIpAddress
+        if (ip == null) {
+            showToast("Wi-Fi not connected")
+            return
+        }
         val mediaId = System.currentTimeMillis().toString()
         val mediaType = if (isVideo) MediaType.VIDEO else MediaType.IMAGE
         val contentResolver = getApplication<Application>().contentResolver
@@ -106,16 +113,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             var finalUri = uri
             val videoInfo = if (isVideo) withContext(Dispatchers.IO) { getVideoInfo(uri) } else null
-            var resolution = if (videoInfo != null && videoInfo.width > 0 && videoInfo.height > 0) {
-                "${videoInfo.width}x${videoInfo.height}"
-            } else null
 
-            // For Android TV / Philips / Sony:
-            // Android TV's built-in DLNA decoder ignores MP4 rotation metadata and displays vertical videos sideways.
-            // When target is an Android TV and the video has rotation (90°/270°), we perform a fast hardware transcode
-            // to bake the rotation into pixels with orientation 0 so it displays upright.
-            if (isVideo && device.isAndroidTv && videoInfo != null && videoInfo.rotation != 0) {
-                showToast("Adjusting video orientation for ${device.friendlyName}...")
+            // For resolution in DIDL-Lite:
+            // - LG webOS: send raw (un-swapped) dimensions — LG natively reads rotation metadata
+            //   and handles orientation itself. Sending swapped 1080x1920 causes LG to allocate
+            //   a tiny viewport instead of full-height pillarbox.
+            // - Android TV: after transcoding, resolution comes from the transcoder output
+            //   (already baked with correct orientation).
+            var resolution: String? = null
+            if (videoInfo != null && videoInfo.rawWidth > 0 && videoInfo.rawHeight > 0) {
+                resolution = "${videoInfo.rawWidth}x${videoInfo.rawHeight}"
+            }
+
+            // For Android TV / Philips / Sony / TCL:
+            // 1) Rotated videos (90°/270°): Transcode to bake rotation into pixels since
+            //    Android TV DLNA renderers ignore MP4 tkhd rotation matrix.
+            // 2) HEVC/H.265 videos: Transcode to H.264 since many Android TV DLNA renderers
+            //    don't support HEVC and show "format not supported / contains only audio".
+            val needsTranscode = isVideo && device.isAndroidTv && videoInfo != null &&
+                (videoInfo.rotation != 0 || videoInfo.isHevc)
+
+            if (needsTranscode && videoInfo != null) {
+                val reason = if (videoInfo.isHevc && videoInfo.rotation == 0) {
+                    "Converting HEVC to H.264 for ${device.friendlyName}..."
+                } else {
+                    "Adjusting video for ${device.friendlyName}..."
+                }
+                showToast(reason)
                 val transcodeResult = withContext(Dispatchers.IO) {
                     VideoRotationTranscoder().transcode(
                         context = getApplication(),
@@ -127,6 +151,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     finalUri = Uri.fromFile(transcodeResult.file)
                     inferredMime = "video/mp4"
                     resolution = "${transcodeResult.width}x${transcodeResult.height}"
+                    // Clean up old transcoded files to save storage
+                    withContext(Dispatchers.IO) {
+                        val rotatedDir = java.io.File(getApplication<Application>().cacheDir, "rotated")
+                        rotatedDir.listFiles()?.filter { it != transcodeResult.file }?.forEach { it.delete() }
+                    }
                 }
             }
 
@@ -297,15 +326,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private data class VideoInfo(
-        val width: Int,
-        val height: Int,
+        val rawWidth: Int,
+        val rawHeight: Int,
         val rotation: Int,
         val isHevc: Boolean
     )
 
     private fun getVideoInfo(uri: Uri): VideoInfo? {
+        val retriever = android.media.MediaMetadataRetriever()
         return try {
-            val retriever = android.media.MediaMetadataRetriever()
             retriever.setDataSource(getApplication(), uri)
             val rotation = retriever.extractMetadata(
                 android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION
@@ -319,20 +348,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val mime = retriever.extractMetadata(
                 android.media.MediaMetadataRetriever.METADATA_KEY_MIMETYPE
             )?.lowercase() ?: ""
-            retriever.release()
 
-            // If rotation is 90 or 270 degrees, the video is portrait (vertical).
-            // Swap display width and height so that the DLNA renderer (LG webOS / Android TV)
-            // receives the correct 9:16 portrait aspect ratio (e.g. 1080x1920 instead of 1920x1080)
-            // and centers it properly with full vertical height and balanced side bars.
-            val isRotated = rotation == 90 || rotation == 270
-            val width = if (isRotated && rawHeight > 0) rawHeight else rawWidth
-            val height = if (isRotated && rawWidth > 0) rawWidth else rawHeight
             val isHevc = mime.contains("hevc") || mime.contains("h265")
 
-            VideoInfo(width, height, rotation, isHevc)
+            // Return raw (un-swapped) dimensions. The caller decides
+            // how to use them based on the target device.
+            VideoInfo(rawWidth, rawHeight, rotation, isHevc)
         } catch (e: Exception) {
             null
+        } finally {
+            try { retriever.release() } catch (_: Exception) {}
         }
     }
 

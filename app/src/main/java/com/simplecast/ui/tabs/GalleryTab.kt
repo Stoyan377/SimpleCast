@@ -51,15 +51,16 @@ fun GalleryTab(
     LaunchedEffect(selectedMediaUri, isVideo) {
         if (selectedMediaUri != null && isVideo) {
             withContext(Dispatchers.IO) {
+                val retriever = MediaMetadataRetriever()
                 try {
-                    val retriever = MediaMetadataRetriever()
                     retriever.setDataSource(context, selectedMediaUri)
                     val frame = retriever.getFrameAtTime(1_000_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
                         ?: retriever.frameAtTime
-                    retriever.release()
                     videoThumbnail = frame
                 } catch (e: Exception) {
                     e.printStackTrace()
+                } finally {
+                    try { retriever.release() } catch (_: Exception) {}
                 }
             }
         } else {

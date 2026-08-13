@@ -54,7 +54,7 @@ class DlnaController {
             lowerMime.contains("image") -> "object.item.imageItem.photo"
             else -> "object.item.videoItem"
         }
-        val didlMetadata = """<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="1" parentID="0" restricted="1"><dc:title>${escapeXml(title)}</dc:title><upnp:class>$upnpClass</upnp:class><res protocolInfo="http-get:*:video/mp4:*"$resAttr>$mediaUrl</res><res protocolInfo="http-get:*:application/x-mpegURL:*">$mediaUrl</res><res protocolInfo="http-get:*:application/vnd.apple.mpegurl:*">$mediaUrl</res><res protocolInfo="http-get:*:video/vnd.dlna.mpeg-tts:*">$mediaUrl</res><res protocolInfo="http-get:*:*:*"$resAttr>$mediaUrl</res></item></DIDL-Lite>"""
+        val didlMetadata = """<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="1" parentID="0" restricted="1"><dc:title>${escapeXml(title)}</dc:title><upnp:class>$upnpClass</upnp:class><res protocolInfo="http-get:*:video/mp4:*"$resAttr>${escapeXml(mediaUrl)}</res><res protocolInfo="http-get:*:application/x-mpegURL:*">${escapeXml(mediaUrl)}</res><res protocolInfo="http-get:*:application/vnd.apple.mpegurl:*">${escapeXml(mediaUrl)}</res><res protocolInfo="http-get:*:video/vnd.dlna.mpeg-tts:*">${escapeXml(mediaUrl)}</res><res protocolInfo="http-get:*:*:*"$resAttr>${escapeXml(mediaUrl)}</res></item></DIDL-Lite>"""
 
         val soapBody = """<?xml version="1.0" encoding="utf-8"?>
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
@@ -84,7 +84,7 @@ class DlnaController {
         resolution: String? = null
     ): Boolean = withContext(Dispatchers.IO) {
         val resAttr = if (!resolution.isNullOrBlank()) " resolution=\"$resolution\"" else ""
-        val didlMetadata = """<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="1" parentID="0" restricted="1"><dc:title>${escapeXml(title)}</dc:title><upnp:class>$upnpClass</upnp:class><res protocolInfo="$protocolInfo"$resAttr>$mediaUrl</res><res protocolInfo="http-get:*:application/x-mpegURL:*">$mediaUrl</res><res protocolInfo="http-get:*:application/vnd.apple.mpegurl:*">$mediaUrl</res><res protocolInfo="http-get:*:video/vnd.dlna.mpeg-tts:*">$mediaUrl</res><res protocolInfo="http-get:*:video/mp4:*"$resAttr>$mediaUrl</res><res protocolInfo="http-get:*:*:*"$resAttr>$mediaUrl</res></item></DIDL-Lite>"""
+        val didlMetadata = """<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="1" parentID="0" restricted="1"><dc:title>${escapeXml(title)}</dc:title><upnp:class>$upnpClass</upnp:class><res protocolInfo="$protocolInfo"$resAttr>${escapeXml(mediaUrl)}</res><res protocolInfo="http-get:*:application/x-mpegURL:*">${escapeXml(mediaUrl)}</res><res protocolInfo="http-get:*:application/vnd.apple.mpegurl:*">${escapeXml(mediaUrl)}</res><res protocolInfo="http-get:*:video/vnd.dlna.mpeg-tts:*">${escapeXml(mediaUrl)}</res><res protocolInfo="http-get:*:video/mp4:*"$resAttr>${escapeXml(mediaUrl)}</res><res protocolInfo="http-get:*:*:*"$resAttr>${escapeXml(mediaUrl)}</res></item></DIDL-Lite>"""
 
         val soapBody = """<?xml version="1.0" encoding="utf-8"?>
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
@@ -236,7 +236,7 @@ class DlnaController {
                     lowerMime.contains("mp2t") || lowerMime.contains("mpeg-ts") || lowerMime.contains("mpeg-tts") ->
                         "http-get:*:video/vnd.dlna.mpeg-tts:DLNA.ORG_PN=MPEG_TS_SD_EU_ISO;DLNA.ORG_OP=01;DLNA.ORG_FLAGS=01700000000000000000000000000000"
                     else ->
-                        "http-get:*:video/mp4:DLNA.ORG_OP=01;DLNA.ORG_FLAGS=01700000000000000000000000000000"
+                        "http-get:*:video/mp4:DLNA.ORG_PN=AVC_MP4_MP_HD;DLNA.ORG_OP=01;DLNA.ORG_FLAGS=01700000000000000000000000000000"
                 }
                 Pair("object.item.videoItem", pi)
             }
@@ -255,11 +255,23 @@ class DlnaController {
 
         val aspectTag = calculateAspectRatio(resolution)?.let { "<upnp:aspectRatio>$it</upnp:aspectRatio>" } ?: ""
 
-        // Multi-res fallback elements in DIDL-Lite for maximum TV compatibility
+        // Multi-res fallback elements in DIDL-Lite:
+        // For HLS/streaming mimes, include HLS + MPEG-TS + MP4 fallbacks for maximum TV compatibility.
+        // For plain video/mp4 (local files), only include MP4 profiles to avoid confusing
+        // Android TV into trying to parse the file as HLS.
+        val isStreamingMime = lowerMime.contains("mpegurl") || lowerMime.contains("m3u8") ||
+            lowerMime.contains("mp2t") || lowerMime.contains("mpeg-ts") || lowerMime.contains("mpeg-tts") ||
+            lowerMime.contains("dash") || lowerMime.contains("mpd")
+
         val multiRes = if (mediaType == MediaType.VIDEO) {
-            """<res protocolInfo="$primaryPi"$resAttr>$mediaUrl</res><res protocolInfo="http-get:*:video/mp4:DLNA.ORG_OP=01;DLNA.ORG_FLAGS=01700000000000000000000000000000"$resAttr>$mediaUrl</res><res protocolInfo="http-get:*:video/mp4:DLNA.ORG_OP=01;DLNA.ORG_FLAGS=21700000000000000000000000000000"$resAttr>$mediaUrl</res><res protocolInfo="http-get:*:application/vnd.apple.mpegurl:*">$mediaUrl</res><res protocolInfo="http-get:*:application/x-mpegURL:*">$mediaUrl</res><res protocolInfo="http-get:*:video/vnd.dlna.mpeg-tts:*">$mediaUrl</res><res protocolInfo="http-get:*:video/mp4:*">$mediaUrl</res><res protocolInfo="http-get:*:*:*">$mediaUrl</res>"""
+            if (isStreamingMime) {
+                """<res protocolInfo="$primaryPi"$resAttr>${escapeXml(mediaUrl)}</res><res protocolInfo="http-get:*:video/mp4:DLNA.ORG_PN=AVC_MP4_MP_HD;DLNA.ORG_OP=01;DLNA.ORG_FLAGS=01700000000000000000000000000000"$resAttr>${escapeXml(mediaUrl)}</res><res protocolInfo="http-get:*:application/vnd.apple.mpegurl:*">${escapeXml(mediaUrl)}</res><res protocolInfo="http-get:*:application/x-mpegURL:*">${escapeXml(mediaUrl)}</res><res protocolInfo="http-get:*:video/vnd.dlna.mpeg-tts:*">${escapeXml(mediaUrl)}</res><res protocolInfo="http-get:*:video/mp4:*">${escapeXml(mediaUrl)}</res><res protocolInfo="http-get:*:*:*">${escapeXml(mediaUrl)}</res>"""
+            } else {
+                // Local video/mp4: only MP4 profiles, no HLS/MPEG-TS noise
+                """<res protocolInfo="$primaryPi"$resAttr>${escapeXml(mediaUrl)}</res><res protocolInfo="http-get:*:video/mp4:DLNA.ORG_OP=01;DLNA.ORG_FLAGS=01700000000000000000000000000000"$resAttr>${escapeXml(mediaUrl)}</res><res protocolInfo="http-get:*:video/mp4:*"$resAttr>${escapeXml(mediaUrl)}</res><res protocolInfo="http-get:*:*:*"$resAttr>${escapeXml(mediaUrl)}</res>"""
+            }
         } else {
-            """<res protocolInfo="$primaryPi"$resAttr>$mediaUrl</res><res protocolInfo="http-get:*:$mimeType:*">$mediaUrl</res>"""
+            """<res protocolInfo="$primaryPi"$resAttr>${escapeXml(mediaUrl)}</res><res protocolInfo="http-get:*:$mimeType:*">${escapeXml(mediaUrl)}</res>"""
         }
 
         return """<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="1" parentID="0" restricted="1"><dc:title>${escapeXml(title)}</dc:title><upnp:class>$upnpClass</upnp:class>$aspectTag$multiRes</item></DIDL-Lite>"""
