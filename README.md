@@ -1,14 +1,16 @@
-# Simple Cast - Universal Android TV & LG TV Cast App (v2.1)
+# Simple Cast - Universal Android TV & LG TV Cast App (v2.2)
 
 ![Simple Cast Icon](app/src/main/res/drawable/app_icon.jpg)
 
-**Simple Cast** е съвременно, високопроизводително Android приложение, разработено на **Kotlin + Jetpack Compose**, предназначено за предаване на уеб видеа, локална галерия, IPTV канали и предаване на екран към **LG webOS TV, Android TV, Google TV, Sony, Samsung Tizen, TCL, Xiaomi TV Box и Chromecast**.
+**Simple Cast** е съвременно, високопроизводително Android приложение, разработено на **Kotlin + Jetpack Compose**, предназначено за предаване на уеб видеа, локална галерия, IPTV канали и екранно огледало към **LG webOS TV, Android TV, Google TV, Philips, Sony, Samsung Tizen, TCL, Xiaomi TV Box и Chromecast**.
 
 ---
 
-## 🚀 Какво е новото във версия v2.1
+## 🚀 Какво е новото във версия v2.2
 
-* 📺 **Универсална поддръжка за Android TV & Google TV**: Добавени са универсални DLNA SOAP протоколи (`http-get:*:video/mp4:*` и `http-get:*:*:*`), които премахват грешката *"Format Not Supported"* при Android TV плейъри.
+* 📺 **Full HD / 4K Fullscreen за LG webOS & Android TV**: Премахнато е ограничението за стандартна резолюция (SD profile), което смаляваше видеото в малък прозорец. Видеата от галерията вече се възпроизвеждат на **пълен екран (Full Screen)** в тяхната оригинална HD/4K резолюция.
+* 🌐 **Мулти-профилен (Multi-Res) DIDL-Lite за IPTV & Web Cast**: Отстранена е грешката *"Форматът не се поддържа"* при IPTV и Web Cast. DIDL-Lite метаданните вече съдържат едновременно HLS (`application/x-mpegURL`, `application/vnd.apple.mpegurl`), MPEG-TS (`video/vnd.dlna.mpeg-tts`) и MP4 протоколи, така че всеки модел телевизор автоматично избира поддържания поток.
+* ⚡ **Директен стрийминг с Range & Content-Length поддръжка**: Подобрен локален HTTP сървър с пълна поддръжка за `Range: bytes=start-end` и коректна дължина на файловете (`Content-Length`), премахващ грешката *"Само аудио"* при Philips и Android TV.
 * 🛡️ **Anti-AdBlock Defuser**: Автоматично трикване на анти-адблок скриптове (`ads.js`, `adblock.js`, `fuckadblock`) и премахване на блокиращите модални прозорци в уеб браузъра, запазвайки рекламния филтър активен.
 * 📺 **Вграден IPTV Web Portal (`/iptv`)**: Локален уеб портал, отварящ се с 1 клик през бутона **Free IPTV**. Интерактивна търсачка и списък с канали от плейлисти (напр. `iptv.org.ua`), 1-tap кастване и вграден HLS плейър.
 * 🔋 **MediaPlaybackService (Doze Mode Protection)**: Фона услуга с `WakeLock` & `WifiLock`, която предотвратява заспиването на Wi-Fi модула и процесора при изключен/заключен екран на телефона.
@@ -48,7 +50,7 @@
 ## 📥 Изтегляне (Download APK)
 
 Можете да изтеглите готовата компилирана версия директно от репозиторито:
-* 📦 **[SimpleCast-v2.1-debug.apk](SimpleCast-v2.1-debug.apk)**
+* 📦 **[SimpleCast-v2.2-debug.apk](SimpleCast-v2.2-debug.apk)**
 
 ---
 

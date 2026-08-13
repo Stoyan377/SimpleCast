@@ -55,13 +55,16 @@ class LocalHttpServer(
                     strUri.contains("png") -> "image/png"
                     strUri.contains("mp4") -> "video/mp4"
                     strUri.contains("mkv") -> "video/x-matroska"
+                    strUri.contains("webm") -> "video/webm"
+                    strUri.contains("mp3") -> "audio/mpeg"
+                    strUri.contains("aac") -> "audio/aac"
                     else -> "video/mp4"
                 }
             }
 
             val isImage = mimeType.startsWith("image/")
 
-            // Determine DLNA features header for LG webOS
+            // Determine DLNA features header
             val dlnaFeatures = if (isImage) {
                 val pn = if (mimeType.contains("png")) "PNG_LRG" else "JPEG_LRG"
                 "DLNA.ORG_PN=$pn;DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=00D00000000000000000000000000000"
@@ -70,13 +73,31 @@ class LocalHttpServer(
             }
             val transferMode = if (isImage) "Interactive" else "Streaming"
 
-            val assetFileDescriptor = try {
-                contentResolver.openAssetFileDescriptor(contentUri, "r")
-            } catch (e: Exception) {
-                null
+            // Check if URI is a direct file or ContentResolver URI
+            val isFileScheme = contentUri.scheme == "file" || contentUri.path?.startsWith("/") == true
+            val fileObj = if (isFileScheme && !contentUri.path.isNullOrEmpty()) java.io.File(contentUri.path!!) else null
+
+            val fileLength: Long = if (fileObj != null && fileObj.exists()) {
+                fileObj.length()
+            } else {
+                val afd = try {
+                    contentResolver.openAssetFileDescriptor(contentUri, "r")
+                } catch (e: Exception) {
+                    null
+                }
+                val len = afd?.length ?: -1L
+                try { afd?.close() } catch (e: Exception) {}
+                len
             }
 
-            val fileLength = assetFileDescriptor?.length ?: -1L
+            fun openFreshStream(): InputStream? {
+                return if (fileObj != null && fileObj.exists()) {
+                    java.io.FileInputStream(fileObj)
+                } else {
+                    contentResolver.openInputStream(contentUri)
+                }
+            }
+
             val rangeHeader = session.headers["range"] ?: session.headers["Range"]
 
             val response = if (rangeHeader != null && rangeHeader.startsWith("bytes=") && fileLength > 0) {
@@ -102,7 +123,7 @@ class LocalHttpServer(
                     res
                 } else {
                     val contentLength = end - start + 1
-                    val inputStream = contentResolver.openInputStream(contentUri)
+                    val inputStream = openFreshStream()
                     inputStream?.skip(start)
 
                     val res = newFixedLengthResponse(
@@ -116,7 +137,7 @@ class LocalHttpServer(
                     res
                 }
             } else {
-                val inputStream: InputStream? = contentResolver.openInputStream(contentUri)
+                val inputStream: InputStream? = openFreshStream()
                 val res = newFixedLengthResponse(
                     Response.Status.OK,
                     mimeType,
@@ -129,12 +150,13 @@ class LocalHttpServer(
                 res
             }
 
-            // Mandatory DLNA HTTP headers for LG webOS 4.5+ compatibility
+            // Universal DLNA HTTP headers for LG webOS, Philips, Android TV & Google TV
             response.addHeader("Accept-Ranges", "bytes")
             response.addHeader("transferMode.dlna.org", transferMode)
             response.addHeader("contentFeatures.dlna.org", dlnaFeatures)
             response.addHeader("Server", "Linux/2.6.0 UPnP/1.0 DLNADOC/1.50 SimpleCast/1.0")
             response.addHeader("Connection", "keep-alive")
+            response.addHeader("Access-Control-Allow-Origin", "*")
 
             response
         } catch (e: Exception) {
@@ -206,7 +228,9 @@ class LocalHttpServer(
             val contentType = conn.contentType ?: guessContentType(remoteUrl)
             val contentLength = conn.contentLengthLong
 
-            val isM3u8 = remoteUrl.lowercase().contains(".m3u8") || contentType.contains("mpegURL", ignoreCase = true)
+            val isM3u8 = remoteUrl.lowercase().contains(".m3u8") ||
+                         contentType.contains("mpegURL", ignoreCase = true) ||
+                         contentType.contains("x-mpegurl", ignoreCase = true)
 
             if (isM3u8) {
                 // For HLS manifests: rewrite segment URLs to also proxy through us
@@ -220,7 +244,7 @@ class LocalHttpServer(
 
                 val response = newFixedLengthResponse(
                     Response.Status.OK,
-                    "application/vnd.apple.mpegurl",
+                    "application/x-mpegURL",
                     rewrittenManifest.byteInputStream(),
                     manifestBytes.size.toLong()
                 )
@@ -314,12 +338,14 @@ class LocalHttpServer(
     private fun guessContentType(url: String): String {
         val lower = url.lowercase()
         return when {
-            lower.contains(".m3u8") -> "application/vnd.apple.mpegurl"
+            lower.contains(".m3u8") -> "application/x-mpegURL"
             lower.contains(".mpd") -> "application/dash+xml"
             lower.contains(".ts") -> "video/mp2t"
             lower.contains(".mp4") -> "video/mp4"
             lower.contains(".webm") -> "video/webm"
+            lower.contains(".mkv") -> "video/x-matroska"
             lower.contains(".aac") -> "audio/aac"
+            lower.contains(".mp3") -> "audio/mpeg"
             else -> "video/mp4"
         }
     }
@@ -328,7 +354,7 @@ class LocalHttpServer(
         response.addHeader("Accept-Ranges", "bytes")
         response.addHeader("transferMode.dlna.org", "Streaming")
         response.addHeader("contentFeatures.dlna.org",
-            "DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=21700000000000000000000000000000")
+            "DLNA.ORG_PN=MP4_MED;DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=21700000000000000000000000000000")
         response.addHeader("Server", "Linux/2.6.0 UPnP/1.0 DLNADOC/1.50 SimpleCast/1.0")
         response.addHeader("Connection", "keep-alive")
         response.addHeader("Access-Control-Allow-Origin", "*")

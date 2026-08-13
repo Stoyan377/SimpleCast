@@ -17,9 +17,10 @@ class DlnaController {
         mediaUrl: String,
         title: String = "Simple Cast Stream",
         mediaType: MediaType = MediaType.VIDEO,
-        mimeType: String = "video/mp4"
+        mimeType: String = "video/mp4",
+        resolution: String? = null
     ): Boolean = withContext(Dispatchers.IO) {
-        val didlMetadata = createDidlMetadata(mediaUrl, title, mediaType, mimeType)
+        val didlMetadata = createDidlMetadata(mediaUrl, title, mediaType, mimeType, resolution)
         val soapBody = """<?xml version="1.0" encoding="utf-8"?>
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
   <s:Body>
@@ -43,26 +44,17 @@ class DlnaController {
         controlUrl: String,
         mediaUrl: String,
         title: String = "Simple Cast Stream",
-        mimeType: String = "video/mp4"
+        mimeType: String = "video/mp4",
+        resolution: String? = null
     ): Boolean = withContext(Dispatchers.IO) {
+        val resAttr = if (!resolution.isNullOrBlank()) " resolution=\"$resolution\"" else ""
         val lowerMime = mimeType.lowercase()
         val upnpClass = when {
             lowerMime.contains("audio") -> "object.item.audioItem.musicTrack"
             lowerMime.contains("image") -> "object.item.imageItem.photo"
             else -> "object.item.videoItem"
         }
-        val protocolInfo = when {
-            lowerMime.contains("mpegurl") || lowerMime.contains("m3u8") -> "http-get:*:application/vnd.apple.mpegurl:*"
-            lowerMime.contains("dash") || lowerMime.contains("mpd") -> "http-get:*:application/dash+xml:*"
-            lowerMime.contains("webm") -> "http-get:*:video/webm:*"
-            lowerMime.contains("mp2t") || lowerMime.contains("mpeg-ts") ||
-                lowerMime.contains("mpeg-tts") -> "http-get:*:video/vnd.dlna.mpeg-tts:*"
-            lowerMime.contains("mpeg") -> "http-get:*:video/mpeg:*"
-            lowerMime.contains("audio") -> "http-get:*:audio/mpeg:*"
-            lowerMime.contains("image") -> "http-get:*:$mimeType:*"
-            else -> "http-get:*:video/mp4:*"
-        }
-        val didlMetadata = """<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="1" parentID="0" restricted="1"><dc:title>${escapeXml(title)}</dc:title><upnp:class>$upnpClass</upnp:class><res protocolInfo="$protocolInfo">$mediaUrl</res></item></DIDL-Lite>"""
+        val didlMetadata = """<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="1" parentID="0" restricted="1"><dc:title>${escapeXml(title)}</dc:title><upnp:class>$upnpClass</upnp:class><res protocolInfo="http-get:*:video/mp4:*"$resAttr>$mediaUrl</res><res protocolInfo="http-get:*:application/x-mpegURL:*">$mediaUrl</res><res protocolInfo="http-get:*:application/vnd.apple.mpegurl:*">$mediaUrl</res><res protocolInfo="http-get:*:video/vnd.dlna.mpeg-tts:*">$mediaUrl</res><res protocolInfo="http-get:*:*:*"$resAttr>$mediaUrl</res></item></DIDL-Lite>"""
 
         val soapBody = """<?xml version="1.0" encoding="utf-8"?>
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
@@ -91,8 +83,8 @@ class DlnaController {
         protocolInfo: String = "http-get:*:video/mp4:*",
         resolution: String? = null
     ): Boolean = withContext(Dispatchers.IO) {
-        val resAttr = if (resolution != null) " resolution=\"$resolution\"" else ""
-        val didlMetadata = """<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="1" parentID="0" restricted="1"><dc:title>${escapeXml(title)}</dc:title><upnp:class>$upnpClass</upnp:class><res protocolInfo="$protocolInfo"$resAttr>$mediaUrl</res></item></DIDL-Lite>"""
+        val resAttr = if (!resolution.isNullOrBlank()) " resolution=\"$resolution\"" else ""
+        val didlMetadata = """<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="1" parentID="0" restricted="1"><dc:title>${escapeXml(title)}</dc:title><upnp:class>$upnpClass</upnp:class><res protocolInfo="$protocolInfo"$resAttr>$mediaUrl</res><res protocolInfo="http-get:*:video/mp4:*"$resAttr>$mediaUrl</res><res protocolInfo="http-get:*:*:*"$resAttr>$mediaUrl</res></item></DIDL-Lite>"""
 
         val soapBody = """<?xml version="1.0" encoding="utf-8"?>
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
@@ -222,23 +214,34 @@ class DlnaController {
         }
     }
 
-    private fun createDidlMetadata(mediaUrl: String, title: String, mediaType: MediaType, mimeType: String): String {
-        val (upnpClass, protocolInfo) = when (mediaType) {
+    private fun createDidlMetadata(
+        mediaUrl: String,
+        title: String,
+        mediaType: MediaType,
+        mimeType: String,
+        resolution: String? = null
+    ): String {
+        val resAttr = if (!resolution.isNullOrBlank()) " resolution=\"$resolution\"" else ""
+        val lowerMime = mimeType.lowercase()
+
+        val (upnpClass, primaryPi) = when (mediaType) {
             MediaType.VIDEO -> {
                 val pi = when {
-                    mimeType.contains("mpegURL") || mimeType.contains("m3u8") ->
-                        "http-get:*:video/mp4:DLNA.ORG_OP=01;DLNA.ORG_FLAGS=21700000000000000000000000000000"
-                    mimeType.contains("dash") || mimeType.contains("mpd") ->
-                        "http-get:*:video/mp4:DLNA.ORG_OP=01;DLNA.ORG_FLAGS=21700000000000000000000000000000"
-                    mimeType.contains("webm") ->
+                    lowerMime.contains("mpegurl") || lowerMime.contains("m3u8") ->
+                        "http-get:*:application/x-mpegURL:DLNA.ORG_OP=01;DLNA.ORG_FLAGS=21700000000000000000000000000000"
+                    lowerMime.contains("dash") || lowerMime.contains("mpd") ->
+                        "http-get:*:application/dash+xml:DLNA.ORG_OP=01;DLNA.ORG_FLAGS=21700000000000000000000000000000"
+                    lowerMime.contains("webm") ->
                         "http-get:*:video/webm:DLNA.ORG_OP=01;DLNA.ORG_FLAGS=01700000000000000000000000000000"
+                    lowerMime.contains("mp2t") || lowerMime.contains("mpeg-ts") || lowerMime.contains("mpeg-tts") ->
+                        "http-get:*:video/vnd.dlna.mpeg-tts:DLNA.ORG_PN=MPEG_TS_SD_EU_ISO;DLNA.ORG_OP=01;DLNA.ORG_FLAGS=01700000000000000000000000000000"
                     else ->
-                        "http-get:*:video/mp4:DLNA.ORG_PN=AVC_MP4_MP_SD_AAC_MULT5;DLNA.ORG_OP=01;DLNA.ORG_FLAGS=01700000000000000000000000000000"
+                        "http-get:*:video/mp4:DLNA.ORG_PN=MP4_MED;DLNA.ORG_OP=01;DLNA.ORG_FLAGS=01700000000000000000000000000000"
                 }
                 Pair("object.item.videoItem", pi)
             }
             MediaType.IMAGE -> {
-                val pn = if (mimeType.contains("png")) "PNG_LRG" else "JPEG_LRG"
+                val pn = if (lowerMime.contains("png")) "PNG_LRG" else "JPEG_LRG"
                 Pair(
                     "object.item.imageItem.photo",
                     "http-get:*:$mimeType:DLNA.ORG_PN=$pn;DLNA.ORG_OP=01;DLNA.ORG_FLAGS=00D00000000000000000000000000000"
@@ -250,7 +253,14 @@ class DlnaController {
             )
         }
 
-        return """<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="1" parentID="0" restricted="1"><dc:title>${escapeXml(title)}</dc:title><upnp:class>$upnpClass</upnp:class><res protocolInfo="$protocolInfo">$mediaUrl</res></item></DIDL-Lite>"""
+        // Multi-res fallback elements in DIDL-Lite for maximum TV compatibility
+        val multiRes = if (mediaType == MediaType.VIDEO) {
+            """<res protocolInfo="$primaryPi"$resAttr>$mediaUrl</res><res protocolInfo="http-get:*:video/mp4:DLNA.ORG_OP=01;DLNA.ORG_FLAGS=21700000000000000000000000000000"$resAttr>$mediaUrl</res><res protocolInfo="http-get:*:application/vnd.apple.mpegurl:*">$mediaUrl</res><res protocolInfo="http-get:*:application/x-mpegURL:*">$mediaUrl</res><res protocolInfo="http-get:*:video/vnd.dlna.mpeg-tts:*">$mediaUrl</res><res protocolInfo="http-get:*:video/mp4:*">$mediaUrl</res><res protocolInfo="http-get:*:*:*">$mediaUrl</res>"""
+        } else {
+            """<res protocolInfo="$primaryPi"$resAttr>$mediaUrl</res><res protocolInfo="http-get:*:$mimeType:*">$mediaUrl</res>"""
+        }
+
+        return """<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="1" parentID="0" restricted="1"><dc:title>${escapeXml(title)}</dc:title><upnp:class>$upnpClass</upnp:class>$multiRes</item></DIDL-Lite>"""
     }
 
     private fun escapeXml(str: String): String {

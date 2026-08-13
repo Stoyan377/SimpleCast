@@ -11,7 +11,6 @@ import com.simplecast.network.server.LocalHttpServer
 import com.simplecast.network.ssdp.DlnaDevice
 import com.simplecast.network.ssdp.SsdpDiscoveryManager
 import com.simplecast.network.utils.NetworkUtils
-import com.simplecast.media.VideoRotationTranscoder
 import com.simplecast.service.MediaPlaybackService
 import com.simplecast.web.SniffedMedia
 import kotlinx.coroutines.Dispatchers
@@ -104,43 +103,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         var inferredMime = contentResolver.getType(uri) ?: if (isVideo) "video/mp4" else "image/jpeg"
 
         viewModelScope.launch {
-            var finalUri = uri
-            var resolution: String? = null
+            val videoInfo = if (isVideo) withContext(Dispatchers.IO) { getVideoInfo(uri) } else null
+            val resolution = if (videoInfo != null && videoInfo.width > 0 && videoInfo.height > 0) {
+                "${videoInfo.width}x${videoInfo.height}"
+            } else null
 
-            // Android TV / Google TV renderers are picky:
-            //  - they ignore the MP4 rotation flag → play videos sideways
-            //  - they can't decode HEVC over DLNA → audio only
-            // So for Android TV we transcode HEVC and any rotated video to AVC MP4 and
-            // bake the rotation into the pixels. Run on Dispatchers.IO – the transcode
-            // pipeline is heavy and would freeze the UI otherwise.
-            if (isVideo && device.isAndroidTv) {
-                val videoInfo = withContext(Dispatchers.IO) { getVideoInfo(uri) }
-                if (videoInfo != null) {
-                    val needsTranscode = videoInfo.rotation != 0 || videoInfo.isHevc
-                    if (needsTranscode) {
-                        showToast("Preparing video for ${device.friendlyName}...")
-                        val result = withContext(Dispatchers.IO) {
-                            VideoRotationTranscoder().transcode(
-                                context = getApplication(),
-                                contentUri = uri,
-                                rotationDegrees = videoInfo.rotation
-                            )
-                        }
-                        if (result != null) {
-                            finalUri = Uri.fromFile(result.file)
-                            inferredMime = "video/mp4"
-                            resolution = "${result.width}x${result.height}"
-                        } else {
-                            showToast("Conversion failed – casting original")
-                            resolution = "${videoInfo.width}x${videoInfo.height}"
-                        }
-                    } else {
-                        resolution = "${videoInfo.width}x${videoInfo.height}"
-                    }
-                }
-            }
-
-            httpServer.registerMedia(mediaId, finalUri)
+            httpServer.registerMedia(mediaId, uri)
             val localStreamUrl = "http://$ip:8080/media/$mediaId"
 
             val success = castUrl(
@@ -193,20 +161,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 proxyUrl += "?cookie=$encodedCookies"
             }
 
-            // Normalize the mime the proxy actually serves so the DIDL protocolInfo matches.
+            // Normalize the mime the proxy actually serves
             val dlnaMime = when {
-                sniffedMedia.mimeType.contains("mpegURL") || sniffedMedia.mimeType.contains("m3u8") ->
-                    "application/vnd.apple.mpegurl"
-                sniffedMedia.mimeType.contains("dash") || sniffedMedia.mimeType.contains("mpd") ->
+                sniffedMedia.mimeType.contains("mpegURL", ignoreCase = true) ||
+                sniffedMedia.mimeType.contains("m3u8", ignoreCase = true) ->
+                    "application/x-mpegURL"
+                sniffedMedia.mimeType.contains("dash", ignoreCase = true) ||
+                sniffedMedia.mimeType.contains("mpd", ignoreCase = true) ->
                     "application/dash+xml"
-                sniffedMedia.mimeType.contains("mp2t") || sniffedMedia.mimeType.contains("mpeg-ts") ->
+                sniffedMedia.mimeType.contains("mp2t", ignoreCase = true) ||
+                sniffedMedia.mimeType.contains("mpeg-ts", ignoreCase = true) ->
                     "video/vnd.dlna.mpeg-tts"
                 else -> sniffedMedia.mimeType
             }
 
-            // Device-aware strategy ordering. Android TV / Google TV reject the strict
-            // LG DLNA profile (AVC_MP4_MP_SD...) with "Format Not Supported", so they
-            // get the mime-aware protocolInfo first.
             var success = castUrl(device, proxyUrl, sniffedMedia.title, MediaType.VIDEO, dlnaMime)
 
             // Last resort – try the original URL directly (only if it's plain HTTP)
@@ -235,12 +203,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Picks the DLNA SetAVTransportURI strategy based on the device type.
-     *
-     * LG webOS tolerates the strict LG DIDL metadata (AVC_MP4_MP_SD_AAC_MULT5) which makes it
-     * play smoothly. Android TV / Google TV / Sony / Samsung reject that strict profile with
-     * "Format Not Supported", so for them we first try the universal simplified protocolInfo
-     * that matches what the local server actually streams.
+     * Picks the DLNA SetAVTransportURI strategy.
+     * With multi-res DIDL-Lite metadata, both LG webOS and Android TV / Google TV / Philips / Sony
+     * receive compatible protocolInfo options matching what the local server actually streams.
      */
     private suspend fun castUrl(
         device: DlnaDevice,
@@ -252,8 +217,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     ): Boolean {
         val lowerMime = mimeType.lowercase()
 
-        // Match the upnp:class to the actual content. Defaulting to videoItem
-        // (as before) made image casts fail on Android TV with "unsupported file".
         val upnpClass = when {
             mediaType == MediaType.IMAGE || lowerMime.contains("image") ->
                 "object.item.imageItem.photo"
@@ -262,42 +225,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             else -> "object.item.videoItem"
         }
 
-        // protocolInfo must reflect what the local server / proxy really serves,
-        // otherwise the renderer answers "Format Not Supported".
-        val protocolInfo = when {
-            lowerMime.contains("mpegurl") || lowerMime.contains("m3u8") ->
-                "http-get:*:application/vnd.apple.mpegurl:*"
-            lowerMime.contains("mpd") || lowerMime.contains("dash") ->
-                "http-get:*:application/dash+xml:*"
-            lowerMime.contains("webm") -> "http-get:*:video/webm:*"
-            lowerMime.contains("mp2t") || lowerMime.contains("mpeg-ts") ||
-                lowerMime.contains("mpeg-tts") ->
-                "http-get:*:video/vnd.dlna.mpeg-tts:*"
-            lowerMime.contains("mpeg") ->
-                "http-get:*:video/mpeg:*"
-            lowerMime.contains("audio") -> "http-get:*:audio/mpeg:*"
-            lowerMime.contains("png") -> "http-get:*:image/png:*"
-            lowerMime.contains("jpeg") || lowerMime.contains("jpg") ->
-                "http-get:*:image/jpeg:*"
-            else -> "http-get:*:video/mp4:*"
-        }
-
-        val strict: suspend () -> Boolean = {
+        val fullMeta: suspend () -> Boolean = {
             dlnaController.setAvTransportUri(
                 controlUrl = device.controlUrl,
                 mediaUrl = mediaUrl,
                 title = title,
                 mediaType = mediaType,
-                mimeType = mimeType
-            )
-        }
-        val custom: suspend () -> Boolean = {
-            dlnaController.setAvTransportUriCustom(
-                controlUrl = device.controlUrl,
-                mediaUrl = mediaUrl,
-                title = title,
-                upnpClass = upnpClass,
-                protocolInfo = protocolInfo,
+                mimeType = mimeType,
                 resolution = resolution
             )
         }
@@ -306,28 +240,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 controlUrl = device.controlUrl,
                 mediaUrl = mediaUrl,
                 title = title,
-                mimeType = mimeType
+                mimeType = mimeType,
+                resolution = resolution
+            )
+        }
+        val custom: suspend () -> Boolean = {
+            dlnaController.setAvTransportUriCustom(
+                controlUrl = device.controlUrl,
+                mediaUrl = mediaUrl,
+                title = title,
+                upnpClass = upnpClass,
+                protocolInfo = "http-get:*:video/mp4:*",
+                resolution = resolution
             )
         }
         val raw: suspend () -> Boolean = {
             dlnaController.setAvTransportUriRaw(device.controlUrl, mediaUrl)
         }
 
-        val isHlsOrDash = lowerMime.contains("mpegurl") || lowerMime.contains("m3u8") ||
-            lowerMime.contains("mpd") || lowerMime.contains("dash")
-
-        // HLS/DASH web streams must be advertised with their exact mime or the
-        // renderer answers "Format Not Supported", so try the mime-aware custom
-        // strategy first. For Android TV / Google TV the strict LG profile
-        // (AVC_MP4_MP_SD_AAC_MULT5) forces SD scaling – that is what stretched
-        // videos and HEVC audio-only on the Philips – so they also get the
-        // mime-aware custom strategy first. LG webOS keeps the strict profile
-        // which plays full-screen there.
-        val strategies = if (isHlsOrDash || device.isAndroidTv) {
-            listOf(custom, universal, strict, raw)
-        } else {
-            listOf(strict, custom, universal, raw)
-        }
+        val strategies = listOf(fullMeta, universal, custom, raw)
 
         for (strategy in strategies) {
             if (strategy()) return true
