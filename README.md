@@ -2,7 +2,7 @@
 
 ![Simple Cast Icon](app/src/main/res/drawable/app_icon.jpg)
 
-**Simple Cast** е съвременно, високопроизводително Android приложение, разработено на **Kotlin + Jetpack Compose**, предназначено за предаване на уеб видеа, локална галерия, IPTV канали и екранно огледало към **LG webOS TV, Android TV, Google TV, Sony, Samsung Tizen, TCL, Xiaomi TV Box и Chromecast**.
+**Simple Cast** е съвременно, високопроизводително Android приложение, разработено на **Kotlin + Jetpack Compose**, предназначено за предаване на уеб видеа, локална галерия, IPTV канали и предаване на екран към **LG webOS TV, Android TV, Google TV, Sony, Samsung Tizen, TCL, Xiaomi TV Box и Chromecast**.
 
 ---
 
