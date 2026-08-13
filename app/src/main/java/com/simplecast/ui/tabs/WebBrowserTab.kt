@@ -226,14 +226,69 @@ fun WebBrowserTab(
                             val reqHost = request?.url?.host ?: ""
                             val lowerUrl = reqUrl.lowercase()
 
-                            // Anti-AdBlock tricking: return dummy JS when site checks for ad-detector scripts
-                            if (lowerUrl.contains("ads.js") || lowerUrl.contains("adframe.js") ||
-                                lowerUrl.contains("adblock.js") || lowerUrl.contains("fuckadblock") ||
-                                lowerUrl.contains("blockadblock") || lowerUrl.contains("detect-ad")) {
-                                val dummyJs = "var canRunAds=true; var isAdBlockActive=false; var adblock=false; var fuckAdBlock=false; window.canRunAds=true;"
+                            // Anti-AdBlock tricking: return dummy JS that defines the globals the
+                            // site's detection scripts expect, so window.adsbygoogle / gtag exist
+                            // and the site believes the ad SDK is loaded (adblock stays ON).
+                            val dummyScript = when {
+                                lowerUrl.contains("adsbygoogle.js") -> """
+                                    (function() {
+                                        window.adsbygoogle = window.adsbygoogle || [];
+                                        window.canRunAds = true;
+                                        window.isAdBlockActive = false;
+                                        var origPush = window.adsbygoogle.push.bind(window.adsbygoogle);
+                                        window.adsbygoogle.push = function(args) {
+                                            if (args && typeof args === 'object') {
+                                                window.canRunAds = true;
+                                            }
+                                            return origPush(args);
+                                        };
+                                        (window.adsbygoogle = window.adsbygoogle || []).push = window.adsbygoogle.push;
+                                    })();
+                                """.trimIndent()
+                                lowerUrl.contains("gtag/js") || lowerUrl.contains("googletagmanager.com/gtag") -> """
+                                    window.dataLayer = window.dataLayer || [];
+                                    function gtag() { dataLayer.push(arguments); }
+                                    window.gtag = gtag;
+                                    window.canRunAds = true;
+                                    window.isAdBlockActive = false;
+                                """.trimIndent()
+                                lowerUrl.contains("gpt.js") || lowerUrl.contains("googletagservices.com") || lowerUrl.contains("pubads_impl") -> """
+                                    window.googletag = window.googletag || { cmd: [] };
+                                    window.googletag.cmd = window.googletag.cmd || [];
+                                    window.googletag.pubads = function() {
+                                        return {
+                                            enableSingleRequest: function(){},
+                                            disableInitialLoad: function(){},
+                                            refresh: function(){},
+                                            setTargeting: function(){ return this; },
+                                            addEventListener: function(){},
+                                            collapseEmptyDivs: function(){},
+                                            set: function(){ return this; }
+                                        };
+                                    };
+                                    window.googletag.defineSlot = function() { return { addService: function(){ return this; }, setTargeting: function(){ return this; } }; };
+                                    window.googletag.display = function(){};
+                                    window.googletag.enableServices = function(){};
+                                    window.canRunAds = true;
+                                """.trimIndent()
+                                lowerUrl.contains("fuckadblock") || lowerUrl.contains("blockadblock") ||
+                                    lowerUrl.contains("adblock.js") || lowerUrl.contains("adframe.js") ||
+                                    lowerUrl.contains("detect-ad") || lowerUrl.contains("ads.js") -> """
+                                    var canRunAds = true;
+                                    window.canRunAds = true;
+                                    window.isAdBlockActive = false;
+                                    window.adblock = false;
+                                    window.fuckAdBlock = { check: function(){ return false; }, onDetected: function(){ return this; }, onNotDetected: function(){ return this; } };
+                                    window.BlockAdBlock = window.fuckAdBlock;
+                                    window.blockAdBlock = window.fuckAdBlock;
+                                """.trimIndent()
+                                else -> null
+                            }
+
+                            if (dummyScript != null) {
                                 return WebResourceResponse(
                                     "application/javascript", "utf-8",
-                                    ByteArrayInputStream(dummyJs.toByteArray(Charsets.UTF_8))
+                                    ByteArrayInputStream(dummyScript.toByteArray(Charsets.UTF_8))
                                 )
                             }
 
@@ -277,15 +332,43 @@ fun WebBrowserTab(
                                         window.canRunAds = true;
                                         window.isAdBlockActive = false;
                                         window.adBlockDetected = false;
-                                        window.fuckAdBlock = undefined;
-                                        window.BlockAdBlock = undefined;
+                                        window.adsBlocked = false;
+                                        if (!window.dataLayer) { window.dataLayer = []; }
+                                        if (!window.gtag) { window.gtag = function(){ window.dataLayer.push(arguments); }; }
+                                        if (!window.adsbygoogle) { window.adsbygoogle = []; }
+
                                         var style = document.getElementById('simplecast-anti-ab');
                                         if (!style) {
                                             style = document.createElement('style');
                                             style.id = 'simplecast-anti-ab';
-                                            style.innerHTML = '[id*="adblock"], [class*="adblock"], [id*="anti-ad"], [class*="anti-ad"], [class*="ad-block"] { display: none !important; opacity: 0 !important; visibility: hidden !important; pointer-events: none !important; } body, html { overflow: auto !important; position: static !important; }';
+                                            style.innerHTML = '[id*="adblock"], [class*="adblock"], [id*="anti-ad"], [class*="anti-ad"], [class*="ad-block"], [class*="advert"], [class*="ad-modal"], [id*="ad-modal"], [class*="blockadblock"], [class*="fuckadblock"], [class*="ad-overlay"], [class*="antiadblock"], [class*="adblock-notice"], [id*="adblock-notice"], [class*="adblock-detected"], [id*="adblock-detected"], [class*="ad-detector"] { display: none !important; opacity: 0 !important; visibility: hidden !important; pointer-events: none !important; } body, html { overflow: auto !important; position: static !important; }';
                                             (document.head || document.documentElement).appendChild(style);
                                         }
+
+                                        // Continuously strip anti-adblock overlays / banners added dynamically
+                                        var removeOverlays = function() {
+                                            var selectors = ['[id*="adblock"]', '[class*="adblock"]', '[id*="anti-ad"]', '[class*="anti-ad"]', '[class*="ad-block"]', '[class*="blockadblock"]', '[class*="fuckadblock"]', '[class*="adblock-notice"]', '[id*="adblock-notice"]', '[class*="adblock-detected"]', '[id*="adblock-detected"]', '[class*="ad-overlay"]', '[id*="anti-adblock"]', '[class*="antiadblock"]'];
+                                            for (var i = 0; i < selectors.length; i++) {
+                                                var nodes = document.querySelectorAll(selectors[i]);
+                                                for (var j = 0; j < nodes.length; j++) {
+                                                    var n = nodes[j];
+                                                    if (n && n.parentNode) {
+                                                        var r = n.getBoundingClientRect();
+                                                        if ((r.width > 0 && r.height > 0) || n.style.display !== 'none') {
+                                                            n.parentNode.removeChild(n);
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        };
+                                        removeOverlays();
+                                        if (window.MutationObserver) {
+                                            var mo = new MutationObserver(function(mutations) {
+                                                removeOverlays();
+                                            });
+                                            mo.observe(document.body || document.documentElement, { childList: true, subtree: true });
+                                        }
+                                        window.setInterval(removeOverlays, 2000);
                                     } catch(e) {}
                                 })();
                             """.trimIndent()

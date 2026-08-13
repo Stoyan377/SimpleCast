@@ -45,8 +45,49 @@ class DlnaController {
         title: String = "Simple Cast Stream",
         mimeType: String = "video/mp4"
     ): Boolean = withContext(Dispatchers.IO) {
-        val upnpClass = "object.item.videoItem"
-        val protocolInfo = if (mimeType.contains("mpegURL") || mimeType.contains("m3u8")) "http-get:*:application/vnd.apple.mpegurl:*" else "http-get:*:video/mp4:*"
+        val lowerMime = mimeType.lowercase()
+        val upnpClass = when {
+            lowerMime.contains("audio") -> "object.item.audioItem.musicTrack"
+            lowerMime.contains("image") -> "object.item.imageItem.photo"
+            else -> "object.item.videoItem"
+        }
+        val protocolInfo = when {
+            lowerMime.contains("mpegurl") || lowerMime.contains("m3u8") -> "http-get:*:application/vnd.apple.mpegurl:*"
+            lowerMime.contains("dash") || lowerMime.contains("mpd") -> "http-get:*:application/dash+xml:*"
+            lowerMime.contains("webm") -> "http-get:*:video/webm:*"
+            lowerMime.contains("mp2t") || lowerMime.contains("mpeg") -> "http-get:*:video/mpeg:*"
+            lowerMime.contains("audio") -> "http-get:*:audio/mpeg:*"
+            lowerMime.contains("image") -> "http-get:*:$mimeType:*"
+            else -> "http-get:*:video/mp4:*"
+        }
+        val didlMetadata = """<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="1" parentID="0" restricted="1"><dc:title>${escapeXml(title)}</dc:title><upnp:class>$upnpClass</upnp:class><res protocolInfo="$protocolInfo">$mediaUrl</res></item></DIDL-Lite>"""
+
+        val soapBody = """<?xml version="1.0" encoding="utf-8"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+  <s:Body>
+    <u:SetAVTransportURI xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+      <InstanceID>0</InstanceID>
+      <CurrentURI>${escapeXml(mediaUrl)}</CurrentURI>
+      <CurrentURIMetaData>${escapeXml(didlMetadata)}</CurrentURIMetaData>
+    </u:SetAVTransportURI>
+  </s:Body>
+</s:Envelope>"""
+
+        val action = "\"urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI\""
+        sendSoapRequest(controlUrl, action, soapBody)
+    }
+
+    /**
+     * Fully custom SetAVTransportURI – lets the caller supply the exact DIDL-Lite
+     * protocolInfo string that matches what the proxy actually serves.
+     */
+    suspend fun setAvTransportUriCustom(
+        controlUrl: String,
+        mediaUrl: String,
+        title: String = "Simple Cast Stream",
+        upnpClass: String = "object.item.videoItem",
+        protocolInfo: String = "http-get:*:video/mp4:*"
+    ): Boolean = withContext(Dispatchers.IO) {
         val didlMetadata = """<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="1" parentID="0" restricted="1"><dc:title>${escapeXml(title)}</dc:title><upnp:class>$upnpClass</upnp:class><res protocolInfo="$protocolInfo">$mediaUrl</res></item></DIDL-Lite>"""
 
         val soapBody = """<?xml version="1.0" encoding="utf-8"?>

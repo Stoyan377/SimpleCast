@@ -11,6 +11,7 @@ import com.simplecast.network.server.LocalHttpServer
 import com.simplecast.network.ssdp.DlnaDevice
 import com.simplecast.network.ssdp.SsdpDiscoveryManager
 import com.simplecast.network.utils.NetworkUtils
+import com.simplecast.media.VideoRotationTranscoder
 import com.simplecast.service.MediaPlaybackService
 import com.simplecast.web.SniffedMedia
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -96,30 +97,36 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         val ip = localIpAddress ?: return
         val mediaId = System.currentTimeMillis().toString()
-        httpServer.registerMedia(mediaId, uri)
-
-        val localStreamUrl = "http://$ip:8080/media/$mediaId"
         val mediaType = if (isVideo) MediaType.VIDEO else MediaType.IMAGE
-
         val contentResolver = getApplication<Application>().contentResolver
         val inferredMime = contentResolver.getType(uri) ?: if (isVideo) "video/mp4" else "image/jpeg"
 
         viewModelScope.launch {
-            var success = dlnaController.setAvTransportUri(
-                controlUrl = device.controlUrl,
-                mediaUrl = localStreamUrl,
-                title = title,
-                mediaType = mediaType,
-                mimeType = inferredMime
-            )
-            if (!success) {
-                success = dlnaController.setAvTransportUriUniversal(
-                    controlUrl = device.controlUrl,
-                    mediaUrl = localStreamUrl,
-                    title = title,
-                    mimeType = inferredMime
-                )
+            var finalUri = uri
+
+            // Android TV / Google TV renderers often ignore the MP4 rotation flag and play the
+            // video sideways. Transcode once so the rotation is baked into the pixels.
+            if (isVideo && !device.isLgWebOs) {
+                val rotation = getVideoRotation(uri)
+                if (rotation != 0) {
+                    showToast("Rotating video for ${device.friendlyName}...")
+                    val result = VideoRotationTranscoder().transcode(
+                        context = getApplication(),
+                        contentUri = uri,
+                        rotationDegrees = rotation
+                    )
+                    if (result != null) {
+                        finalUri = Uri.fromFile(result.file)
+                    } else {
+                        showToast("Rotation failed – casting original")
+                    }
+                }
             }
+
+            httpServer.registerMedia(mediaId, finalUri)
+            val localStreamUrl = "http://$ip:8080/media/$mediaId"
+
+            val success = castUrl(device, localStreamUrl, title, mediaType, inferredMime)
 
             if (success) {
                 dlnaController.play(device.controlUrl)
@@ -156,7 +163,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             dlnaController.stop(device.controlUrl)
 
             // Proxy the web stream through our local HTTP server
-            // This converts HTTPS → HTTP which LG webOS DLNA can handle
+            // This converts HTTPS → HTTP which webOS / Android TV DLNA can handle
             val encodedUrl = java.net.URLEncoder.encode(sniffedMedia.url, "UTF-8")
             var proxyUrl = "http://$ip:8080/proxy/$encodedUrl"
 
@@ -166,47 +173,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 proxyUrl += "?cookie=$encodedCookies"
             }
 
-            // Use video/mp4 as mime for DLNA regardless of original stream type
-            // The proxy handles the actual content type
+            // Normalize the mime the proxy actually serves so the DIDL protocolInfo matches.
             val dlnaMime = when {
-                sniffedMedia.mimeType.contains("mpegURL") || sniffedMedia.mimeType.contains("m3u8") -> "video/mp4"
-                sniffedMedia.mimeType.contains("dash") -> "video/mp4"
+                sniffedMedia.mimeType.contains("mpegURL") || sniffedMedia.mimeType.contains("m3u8") ->
+                    "application/vnd.apple.mpegurl"
+                sniffedMedia.mimeType.contains("dash") || sniffedMedia.mimeType.contains("mpd") ->
+                    "application/dash+xml"
                 else -> sniffedMedia.mimeType
             }
 
-            // Strategy 1: Try with LG DIDL-Lite metadata via proxy
-            var success = dlnaController.setAvTransportUri(
-                controlUrl = device.controlUrl,
-                mediaUrl = proxyUrl,
-                title = sniffedMedia.title,
-                mediaType = MediaType.VIDEO,
-                mimeType = dlnaMime
-            )
+            // Device-aware strategy ordering. Android TV / Google TV reject the strict
+            // LG DLNA profile (AVC_MP4_MP_SD...) with "Format Not Supported", so they
+            // get the simple universal protocolInfo first.
+            var success = castUrl(device, proxyUrl, sniffedMedia.title, MediaType.VIDEO, dlnaMime)
 
-            // Strategy 2: Try Universal DIDL-Lite metadata (Android TV, Google TV, Sony, Samsung)
-            if (!success) {
-                success = dlnaController.setAvTransportUriUniversal(
-                    controlUrl = device.controlUrl,
-                    mediaUrl = proxyUrl,
-                    title = sniffedMedia.title,
-                    mimeType = sniffedMedia.mimeType
-                )
-            }
-
-            // Strategy 3: Try raw URL without metadata via proxy
-            if (!success) {
-                success = dlnaController.setAvTransportUriRaw(
-                    controlUrl = device.controlUrl,
-                    mediaUrl = proxyUrl
-                )
-            }
-
-            // Strategy 4: Last resort – try the original URL directly (maybe HTTP)
+            // Last resort – try the original URL directly (only if it's plain HTTP)
             if (!success && !sniffedMedia.url.startsWith("https")) {
-                success = dlnaController.setAvTransportUriRaw(
-                    controlUrl = device.controlUrl,
-                    mediaUrl = sniffedMedia.url
-                )
+                success = castUrl(device, sniffedMedia.url, sniffedMedia.title, MediaType.VIDEO, dlnaMime)
             }
 
             if (success) {
@@ -226,6 +209,99 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 showToast("TV rejected this stream – try another URL or a direct MP4/M3U8 link")
             }
+        }
+    }
+
+    /**
+     * Picks the DLNA SetAVTransportURI strategy based on the device type.
+     *
+     * LG webOS tolerates the strict LG DIDL metadata (AVC_MP4_MP_SD_AAC_MULT5) which makes it
+     * play smoothly. Android TV / Google TV / Sony / Samsung reject that strict profile with
+     * "Format Not Supported", so for them we first try the universal simplified protocolInfo
+     * that matches what the local server actually streams.
+     */
+    private suspend fun castUrl(
+        device: DlnaDevice,
+        mediaUrl: String,
+        title: String,
+        mediaType: MediaType,
+        mimeType: String
+    ): Boolean {
+        val lowerMime = mimeType.lowercase()
+        val protocolInfo = when {
+            lowerMime.contains("mpegurl") || lowerMime.contains("m3u8") ->
+                "http-get:*:application/vnd.apple.mpegurl:*"
+            lowerMime.contains("mpd") || lowerMime.contains("dash") ->
+                "http-get:*:application/dash+xml:*"
+            lowerMime.contains("webm") -> "http-get:*:video/webm:*"
+            lowerMime.contains("mp2t") || lowerMime.contains("mpeg") ->
+                "http-get:*:video/mpeg:*"
+            lowerMime.contains("audio") -> "http-get:*:audio/mpeg:*"
+            lowerMime.contains("png") -> "http-get:*:image/png:*"
+            lowerMime.contains("jpeg") || lowerMime.contains("jpg") ->
+                "http-get:*:image/jpeg:*"
+            else -> "http-get:*:video/mp4:*"
+        }
+
+        val lgStrategies: List<suspend () -> Boolean> = listOf(
+            {
+                dlnaController.setAvTransportUri(
+                    controlUrl = device.controlUrl,
+                    mediaUrl = mediaUrl,
+                    title = title,
+                    mediaType = mediaType,
+                    mimeType = mimeType
+                )
+            },
+            {
+                dlnaController.setAvTransportUriUniversal(
+                    controlUrl = device.controlUrl,
+                    mediaUrl = mediaUrl,
+                    title = title,
+                    mimeType = mimeType
+                )
+            },
+            { dlnaController.setAvTransportUriRaw(device.controlUrl, mediaUrl) }
+        )
+
+        val androidStrategies: List<suspend () -> Boolean> = listOf(
+            {
+                dlnaController.setAvTransportUriCustom(
+                    controlUrl = device.controlUrl,
+                    mediaUrl = mediaUrl,
+                    title = title,
+                    protocolInfo = protocolInfo
+                )
+            },
+            {
+                dlnaController.setAvTransportUriUniversal(
+                    controlUrl = device.controlUrl,
+                    mediaUrl = mediaUrl,
+                    title = title,
+                    mimeType = mimeType
+                )
+            },
+            { dlnaController.setAvTransportUriRaw(device.controlUrl, mediaUrl) }
+        )
+
+        val strategies = if (device.isLgWebOs) lgStrategies else androidStrategies
+        for (strategy in strategies) {
+            if (strategy()) return true
+        }
+        return false
+    }
+
+    private fun getVideoRotation(uri: Uri): Int {
+        return try {
+            val retriever = android.media.MediaMetadataRetriever()
+            retriever.setDataSource(getApplication(), uri)
+            val value = retriever.extractMetadata(
+                android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION
+            )
+            retriever.release()
+            value?.toIntOrNull() ?: 0
+        } catch (e: Exception) {
+            0
         }
     }
 

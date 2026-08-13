@@ -24,7 +24,24 @@ data class DlnaDevice(
     val controlUrl: String,
     val ipAddress: String,
     val iconUrl: String? = null
-)
+) {
+    val isLgWebOs: Boolean
+        get() {
+            val m = "$manufacturer $modelName".lowercase()
+            return m.contains("lg") || m.contains("webos")
+        }
+
+    val isAndroidTv: Boolean
+        get() {
+            val m = "$manufacturer $modelName".lowercase()
+            return m.contains("android") || m.contains("google") ||
+                m.contains("sony") || m.contains("bravia") ||
+                m.contains("tcl") || m.contains("xiaomi") ||
+                m.contains("hisense") || m.contains("philips") ||
+                m.contains("samsung") || m.contains("tizen") ||
+                m.contains("chromecast") || m.contains("vidaa")
+        }
+}
 
 class SsdpDiscoveryManager(private val context: Context) {
 
