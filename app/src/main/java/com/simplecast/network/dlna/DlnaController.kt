@@ -36,6 +36,35 @@ class DlnaController {
     }
 
     /**
+     * Universal setAvTransportUri for Android TV, Google TV, Sony, Samsung, etc.
+     * Uses simplified protocolInfo "http-get:*:video/mp4:*" or "http-get:*:*:*"
+     */
+    suspend fun setAvTransportUriUniversal(
+        controlUrl: String,
+        mediaUrl: String,
+        title: String = "Simple Cast Stream",
+        mimeType: String = "video/mp4"
+    ): Boolean = withContext(Dispatchers.IO) {
+        val upnpClass = "object.item.videoItem"
+        val protocolInfo = if (mimeType.contains("mpegURL") || mimeType.contains("m3u8")) "http-get:*:application/vnd.apple.mpegurl:*" else "http-get:*:video/mp4:*"
+        val didlMetadata = """<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="1" parentID="0" restricted="1"><dc:title>${escapeXml(title)}</dc:title><upnp:class>$upnpClass</upnp:class><res protocolInfo="$protocolInfo">$mediaUrl</res></item></DIDL-Lite>"""
+
+        val soapBody = """<?xml version="1.0" encoding="utf-8"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+  <s:Body>
+    <u:SetAVTransportURI xmlns:u="urn:schemas-upnp-org:service:AVTransport:1">
+      <InstanceID>0</InstanceID>
+      <CurrentURI>${escapeXml(mediaUrl)}</CurrentURI>
+      <CurrentURIMetaData>${escapeXml(didlMetadata)}</CurrentURIMetaData>
+    </u:SetAVTransportURI>
+  </s:Body>
+</s:Envelope>"""
+
+        val action = "\"urn:schemas-upnp-org:service:AVTransport:1#SetAVTransportURI\""
+        sendSoapRequest(controlUrl, action, soapBody)
+    }
+
+    /**
      * SetAVTransportURI without metadata – some LG TVs respond better
      * when handed a raw URL without DIDL-Lite metadata for web streams.
      */

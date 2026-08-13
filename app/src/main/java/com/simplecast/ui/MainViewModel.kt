@@ -105,13 +105,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val inferredMime = contentResolver.getType(uri) ?: if (isVideo) "video/mp4" else "image/jpeg"
 
         viewModelScope.launch {
-            val success = dlnaController.setAvTransportUri(
+            var success = dlnaController.setAvTransportUri(
                 controlUrl = device.controlUrl,
                 mediaUrl = localStreamUrl,
                 title = title,
                 mediaType = mediaType,
                 mimeType = inferredMime
             )
+            if (!success) {
+                success = dlnaController.setAvTransportUriUniversal(
+                    controlUrl = device.controlUrl,
+                    mediaUrl = localStreamUrl,
+                    title = title,
+                    mimeType = inferredMime
+                )
+            }
+
             if (success) {
                 dlnaController.play(device.controlUrl)
                 _playbackState.value = PlaybackState(
@@ -165,7 +174,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 else -> sniffedMedia.mimeType
             }
 
-            // Strategy 1: Try with DIDL-Lite metadata via proxy
+            // Strategy 1: Try with LG DIDL-Lite metadata via proxy
             var success = dlnaController.setAvTransportUri(
                 controlUrl = device.controlUrl,
                 mediaUrl = proxyUrl,
@@ -174,7 +183,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 mimeType = dlnaMime
             )
 
-            // Strategy 2: Try raw URL without metadata via proxy
+            // Strategy 2: Try Universal DIDL-Lite metadata (Android TV, Google TV, Sony, Samsung)
+            if (!success) {
+                success = dlnaController.setAvTransportUriUniversal(
+                    controlUrl = device.controlUrl,
+                    mediaUrl = proxyUrl,
+                    title = sniffedMedia.title,
+                    mimeType = sniffedMedia.mimeType
+                )
+            }
+
+            // Strategy 3: Try raw URL without metadata via proxy
             if (!success) {
                 success = dlnaController.setAvTransportUriRaw(
                     controlUrl = device.controlUrl,
@@ -182,7 +201,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
 
-            // Strategy 3: Last resort – try the original URL directly (maybe HTTP)
+            // Strategy 4: Last resort – try the original URL directly (maybe HTTP)
             if (!success && !sniffedMedia.url.startsWith("https")) {
                 success = dlnaController.setAvTransportUriRaw(
                     controlUrl = device.controlUrl,

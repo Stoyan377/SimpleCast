@@ -224,6 +224,18 @@ fun WebBrowserTab(
                         ): WebResourceResponse? {
                             val reqUrl = request?.url?.toString() ?: ""
                             val reqHost = request?.url?.host ?: ""
+                            val lowerUrl = reqUrl.lowercase()
+
+                            // Anti-AdBlock tricking: return dummy JS when site checks for ad-detector scripts
+                            if (lowerUrl.contains("ads.js") || lowerUrl.contains("adframe.js") ||
+                                lowerUrl.contains("adblock.js") || lowerUrl.contains("fuckadblock") ||
+                                lowerUrl.contains("blockadblock") || lowerUrl.contains("detect-ad")) {
+                                val dummyJs = "var canRunAds=true; var isAdBlockActive=false; var adblock=false; var fuckAdBlock=false; window.canRunAds=true;"
+                                return WebResourceResponse(
+                                    "application/javascript", "utf-8",
+                                    ByteArrayInputStream(dummyJs.toByteArray(Charsets.UTF_8))
+                                )
+                            }
 
                             // Block known ad domains
                             if (adHosts.any { adHost -> reqHost.contains(adHost) }) {
@@ -234,7 +246,6 @@ fun WebBrowserTab(
                             }
 
                             // Also block common ad URL patterns
-                            val lowerUrl = reqUrl.lowercase()
                             if (lowerUrl.contains("/ads/") || lowerUrl.contains("/ad/") ||
                                 lowerUrl.contains("banner") || lowerUrl.contains("pop-up") ||
                                 lowerUrl.contains("interstitial") || lowerUrl.contains("prebid") ||
@@ -258,6 +269,28 @@ fun WebBrowserTab(
 
                         override fun onPageFinished(view: WebView?, url: String?) {
                             snifferClient.onPageFinished(view, url)
+
+                            // Inject Anti-AdBlock Defuser script
+                            val antiAdBlockScript = """
+                                (function() {
+                                    try {
+                                        window.canRunAds = true;
+                                        window.isAdBlockActive = false;
+                                        window.adBlockDetected = false;
+                                        window.fuckAdBlock = undefined;
+                                        window.BlockAdBlock = undefined;
+                                        var style = document.getElementById('simplecast-anti-ab');
+                                        if (!style) {
+                                            style = document.createElement('style');
+                                            style.id = 'simplecast-anti-ab';
+                                            style.innerHTML = '[id*="adblock"], [class*="adblock"], [id*="anti-ad"], [class*="anti-ad"], [class*="ad-block"] { display: none !important; opacity: 0 !important; visibility: hidden !important; pointer-events: none !important; } body, html { overflow: auto !important; position: static !important; }';
+                                            (document.head || document.documentElement).appendChild(style);
+                                        }
+                                    } catch(e) {}
+                                })();
+                            """.trimIndent()
+                            view?.evaluateJavascript(antiAdBlockScript, null)
+
                             // Update the address bar with the actual loaded URL if not editing
                             if (url != null && !isAddressBarFocused) {
                                 urlFieldValue = TextFieldValue(url)
