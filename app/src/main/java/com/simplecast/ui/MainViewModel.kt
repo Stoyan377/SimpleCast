@@ -14,10 +14,12 @@ import com.simplecast.network.utils.NetworkUtils
 import com.simplecast.media.VideoRotationTranscoder
 import com.simplecast.service.MediaPlaybackService
 import com.simplecast.web.SniffedMedia
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class PlaybackState(
     val isPlaying: Boolean = false,
@@ -106,15 +108,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             // Android TV / Google TV renderers often ignore the MP4 rotation flag and play the
             // video sideways. Transcode once so the rotation is baked into the pixels.
-            if (isVideo && !device.isLgWebOs) {
-                val rotation = getVideoRotation(uri)
+            // Run on Dispatchers.IO – MediaMetadataRetriever and the transcode pipeline are
+            // heavy and would freeze the UI otherwise. Only run for explicitly detected
+            // Android TV devices so an undetected LG webOS TV is never re-encoded.
+            if (isVideo && device.isAndroidTv) {
+                val rotation = withContext(Dispatchers.IO) { getVideoRotation(uri) }
                 if (rotation != 0) {
                     showToast("Rotating video for ${device.friendlyName}...")
-                    val result = VideoRotationTranscoder().transcode(
-                        context = getApplication(),
-                        contentUri = uri,
-                        rotationDegrees = rotation
-                    )
+                    val result = withContext(Dispatchers.IO) {
+                        VideoRotationTranscoder().transcode(
+                            context = getApplication(),
+                            contentUri = uri,
+                            rotationDegrees = rotation
+                        )
+                    }
                     if (result != null) {
                         finalUri = Uri.fromFile(result.file)
                     } else {
@@ -228,6 +235,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         mimeType: String
     ): Boolean {
         val lowerMime = mimeType.lowercase()
+
+        // Match the upnp:class to the actual content. Defaulting to videoItem
+        // (as before) made image casts fail on Android TV with "unsupported file".
+        val upnpClass = when {
+            mediaType == MediaType.IMAGE || lowerMime.contains("image") ->
+                "object.item.imageItem.photo"
+            mediaType == MediaType.AUDIO || lowerMime.contains("audio") ->
+                "object.item.audioItem.musicTrack"
+            else -> "object.item.videoItem"
+        }
+
+        // protocolInfo must reflect what the local server / proxy really serves,
+        // otherwise the renderer answers "Format Not Supported".
         val protocolInfo = when {
             lowerMime.contains("mpegurl") || lowerMime.contains("m3u8") ->
                 "http-get:*:application/vnd.apple.mpegurl:*"
@@ -243,48 +263,50 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             else -> "http-get:*:video/mp4:*"
         }
 
-        val lgStrategies: List<suspend () -> Boolean> = listOf(
-            {
-                dlnaController.setAvTransportUri(
-                    controlUrl = device.controlUrl,
-                    mediaUrl = mediaUrl,
-                    title = title,
-                    mediaType = mediaType,
-                    mimeType = mimeType
-                )
-            },
-            {
-                dlnaController.setAvTransportUriUniversal(
-                    controlUrl = device.controlUrl,
-                    mediaUrl = mediaUrl,
-                    title = title,
-                    mimeType = mimeType
-                )
-            },
-            { dlnaController.setAvTransportUriRaw(device.controlUrl, mediaUrl) }
-        )
+        val strict: suspend () -> Boolean = {
+            dlnaController.setAvTransportUri(
+                controlUrl = device.controlUrl,
+                mediaUrl = mediaUrl,
+                title = title,
+                mediaType = mediaType,
+                mimeType = mimeType
+            )
+        }
+        val custom: suspend () -> Boolean = {
+            dlnaController.setAvTransportUriCustom(
+                controlUrl = device.controlUrl,
+                mediaUrl = mediaUrl,
+                title = title,
+                upnpClass = upnpClass,
+                protocolInfo = protocolInfo
+            )
+        }
+        val universal: suspend () -> Boolean = {
+            dlnaController.setAvTransportUriUniversal(
+                controlUrl = device.controlUrl,
+                mediaUrl = mediaUrl,
+                title = title,
+                mimeType = mimeType
+            )
+        }
+        val raw: suspend () -> Boolean = {
+            dlnaController.setAvTransportUriRaw(device.controlUrl, mediaUrl)
+        }
 
-        val androidStrategies: List<suspend () -> Boolean> = listOf(
-            {
-                dlnaController.setAvTransportUriCustom(
-                    controlUrl = device.controlUrl,
-                    mediaUrl = mediaUrl,
-                    title = title,
-                    protocolInfo = protocolInfo
-                )
-            },
-            {
-                dlnaController.setAvTransportUriUniversal(
-                    controlUrl = device.controlUrl,
-                    mediaUrl = mediaUrl,
-                    title = title,
-                    mimeType = mimeType
-                )
-            },
-            { dlnaController.setAvTransportUriRaw(device.controlUrl, mediaUrl) }
-        )
+        val isHlsOrDash = lowerMime.contains("mpegurl") || lowerMime.contains("m3u8") ||
+            lowerMime.contains("mpd") || lowerMime.contains("dash")
 
-        val strategies = if (device.isLgWebOs) lgStrategies else androidStrategies
+        // HLS/DASH web streams must be advertised with their exact mime or the
+        // renderer answers "Format Not Supported", so try the mime-aware custom
+        // strategy first. For plain files the strict LG DIDL profile
+        // (AVC_MP4_MP_SD_AAC_MULT5 / JPEG_LRG) is what keeps webOS full-screen
+        // and is also accepted by Android TV / Google TV, so it stays first.
+        val strategies = if (isHlsOrDash) {
+            listOf(custom, universal, strict, raw)
+        } else {
+            listOf(strict, custom, universal, raw)
+        }
+
         for (strategy in strategies) {
             if (strategy()) return true
         }

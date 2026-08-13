@@ -27,19 +27,20 @@ data class DlnaDevice(
 ) {
     val isLgWebOs: Boolean
         get() {
-            val m = "$manufacturer $modelName".lowercase()
-            return m.contains("lg") || m.contains("webos")
+            val m = "$manufacturer $modelName $friendlyName".lowercase()
+            return m.contains("lg") || m.contains("webos") || m.contains("netcast")
         }
 
     val isAndroidTv: Boolean
         get() {
-            val m = "$manufacturer $modelName".lowercase()
+            val m = "$manufacturer $modelName $friendlyName".lowercase()
             return m.contains("android") || m.contains("google") ||
                 m.contains("sony") || m.contains("bravia") ||
                 m.contains("tcl") || m.contains("xiaomi") ||
                 m.contains("hisense") || m.contains("philips") ||
-                m.contains("samsung") || m.contains("tizen") ||
-                m.contains("chromecast") || m.contains("vidaa")
+                m.contains("tp vision") || m.contains("samsung") ||
+                m.contains("tizen") || m.contains("chromecast") ||
+                m.contains("vidaa")
         }
 }
 
