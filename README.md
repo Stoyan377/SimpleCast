@@ -1,4 +1,4 @@
-# Simple Cast - Android LG TV Cast & Screen Mirroring App
+# Simple Cast - Android App for LG/Google TV Cast & Screen Mirroring
 
 Simple Cast е съвременно Android приложение, разработено на **Kotlin + Jetpack Compose**, предназначено за предаване на съдържание (мултимедия и екран) към LG TV (webOS 4.5+ / DLNA / Miracast).
 
