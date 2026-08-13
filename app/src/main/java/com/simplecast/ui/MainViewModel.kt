@@ -101,31 +101,41 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val mediaId = System.currentTimeMillis().toString()
         val mediaType = if (isVideo) MediaType.VIDEO else MediaType.IMAGE
         val contentResolver = getApplication<Application>().contentResolver
-        val inferredMime = contentResolver.getType(uri) ?: if (isVideo) "video/mp4" else "image/jpeg"
+        var inferredMime = contentResolver.getType(uri) ?: if (isVideo) "video/mp4" else "image/jpeg"
 
         viewModelScope.launch {
             var finalUri = uri
+            var resolution: String? = null
 
-            // Android TV / Google TV renderers often ignore the MP4 rotation flag and play the
-            // video sideways. Transcode once so the rotation is baked into the pixels.
-            // Run on Dispatchers.IO – MediaMetadataRetriever and the transcode pipeline are
-            // heavy and would freeze the UI otherwise. Only run for explicitly detected
-            // Android TV devices so an undetected LG webOS TV is never re-encoded.
+            // Android TV / Google TV renderers are picky:
+            //  - they ignore the MP4 rotation flag → play videos sideways
+            //  - they can't decode HEVC over DLNA → audio only
+            // So for Android TV we transcode HEVC and any rotated video to AVC MP4 and
+            // bake the rotation into the pixels. Run on Dispatchers.IO – the transcode
+            // pipeline is heavy and would freeze the UI otherwise.
             if (isVideo && device.isAndroidTv) {
-                val rotation = withContext(Dispatchers.IO) { getVideoRotation(uri) }
-                if (rotation != 0) {
-                    showToast("Rotating video for ${device.friendlyName}...")
-                    val result = withContext(Dispatchers.IO) {
-                        VideoRotationTranscoder().transcode(
-                            context = getApplication(),
-                            contentUri = uri,
-                            rotationDegrees = rotation
-                        )
-                    }
-                    if (result != null) {
-                        finalUri = Uri.fromFile(result.file)
+                val videoInfo = withContext(Dispatchers.IO) { getVideoInfo(uri) }
+                if (videoInfo != null) {
+                    val needsTranscode = videoInfo.rotation != 0 || videoInfo.isHevc
+                    if (needsTranscode) {
+                        showToast("Preparing video for ${device.friendlyName}...")
+                        val result = withContext(Dispatchers.IO) {
+                            VideoRotationTranscoder().transcode(
+                                context = getApplication(),
+                                contentUri = uri,
+                                rotationDegrees = videoInfo.rotation
+                            )
+                        }
+                        if (result != null) {
+                            finalUri = Uri.fromFile(result.file)
+                            inferredMime = "video/mp4"
+                            resolution = "${result.width}x${result.height}"
+                        } else {
+                            showToast("Conversion failed – casting original")
+                            resolution = "${videoInfo.width}x${videoInfo.height}"
+                        }
                     } else {
-                        showToast("Rotation failed – casting original")
+                        resolution = "${videoInfo.width}x${videoInfo.height}"
                     }
                 }
             }
@@ -133,7 +143,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             httpServer.registerMedia(mediaId, finalUri)
             val localStreamUrl = "http://$ip:8080/media/$mediaId"
 
-            val success = castUrl(device, localStreamUrl, title, mediaType, inferredMime)
+            val success = castUrl(
+                device, localStreamUrl, title, mediaType, inferredMime,
+                resolution = resolution
+            )
 
             if (success) {
                 dlnaController.play(device.controlUrl)
@@ -186,12 +199,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     "application/vnd.apple.mpegurl"
                 sniffedMedia.mimeType.contains("dash") || sniffedMedia.mimeType.contains("mpd") ->
                     "application/dash+xml"
+                sniffedMedia.mimeType.contains("mp2t") || sniffedMedia.mimeType.contains("mpeg-ts") ->
+                    "video/vnd.dlna.mpeg-tts"
                 else -> sniffedMedia.mimeType
             }
 
             // Device-aware strategy ordering. Android TV / Google TV reject the strict
             // LG DLNA profile (AVC_MP4_MP_SD...) with "Format Not Supported", so they
-            // get the simple universal protocolInfo first.
+            // get the mime-aware protocolInfo first.
             var success = castUrl(device, proxyUrl, sniffedMedia.title, MediaType.VIDEO, dlnaMime)
 
             // Last resort – try the original URL directly (only if it's plain HTTP)
@@ -232,7 +247,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         mediaUrl: String,
         title: String,
         mediaType: MediaType,
-        mimeType: String
+        mimeType: String,
+        resolution: String? = null
     ): Boolean {
         val lowerMime = mimeType.lowercase()
 
@@ -254,7 +270,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             lowerMime.contains("mpd") || lowerMime.contains("dash") ->
                 "http-get:*:application/dash+xml:*"
             lowerMime.contains("webm") -> "http-get:*:video/webm:*"
-            lowerMime.contains("mp2t") || lowerMime.contains("mpeg") ->
+            lowerMime.contains("mp2t") || lowerMime.contains("mpeg-ts") ||
+                lowerMime.contains("mpeg-tts") ->
+                "http-get:*:video/vnd.dlna.mpeg-tts:*"
+            lowerMime.contains("mpeg") ->
                 "http-get:*:video/mpeg:*"
             lowerMime.contains("audio") -> "http-get:*:audio/mpeg:*"
             lowerMime.contains("png") -> "http-get:*:image/png:*"
@@ -278,7 +297,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 mediaUrl = mediaUrl,
                 title = title,
                 upnpClass = upnpClass,
-                protocolInfo = protocolInfo
+                protocolInfo = protocolInfo,
+                resolution = resolution
             )
         }
         val universal: suspend () -> Boolean = {
@@ -298,10 +318,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         // HLS/DASH web streams must be advertised with their exact mime or the
         // renderer answers "Format Not Supported", so try the mime-aware custom
-        // strategy first. For plain files the strict LG DIDL profile
-        // (AVC_MP4_MP_SD_AAC_MULT5 / JPEG_LRG) is what keeps webOS full-screen
-        // and is also accepted by Android TV / Google TV, so it stays first.
-        val strategies = if (isHlsOrDash) {
+        // strategy first. For Android TV / Google TV the strict LG profile
+        // (AVC_MP4_MP_SD_AAC_MULT5) forces SD scaling – that is what stretched
+        // videos and HEVC audio-only on the Philips – so they also get the
+        // mime-aware custom strategy first. LG webOS keeps the strict profile
+        // which plays full-screen there.
+        val strategies = if (isHlsOrDash || device.isAndroidTv) {
             listOf(custom, universal, strict, raw)
         } else {
             listOf(strict, custom, universal, raw)
@@ -313,17 +335,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return false
     }
 
-    private fun getVideoRotation(uri: Uri): Int {
+    private data class VideoInfo(
+        val width: Int,
+        val height: Int,
+        val rotation: Int,
+        val isHevc: Boolean
+    )
+
+    private fun getVideoInfo(uri: Uri): VideoInfo? {
         return try {
             val retriever = android.media.MediaMetadataRetriever()
             retriever.setDataSource(getApplication(), uri)
-            val value = retriever.extractMetadata(
+            val rotation = retriever.extractMetadata(
                 android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION
-            )
+            )?.toIntOrNull() ?: 0
+            val width = retriever.extractMetadata(
+                android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH
+            )?.toIntOrNull() ?: 0
+            val height = retriever.extractMetadata(
+                android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT
+            )?.toIntOrNull() ?: 0
+            val mime = retriever.extractMetadata(
+                android.media.MediaMetadataRetriever.METADATA_KEY_MIMETYPE
+            )?.lowercase() ?: ""
             retriever.release()
-            value?.toIntOrNull() ?: 0
+            val isHevc = mime.contains("hevc") || mime.contains("h265")
+            VideoInfo(width, height, rotation, isHevc)
         } catch (e: Exception) {
-            0
+            null
         }
     }
 

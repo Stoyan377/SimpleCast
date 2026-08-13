@@ -55,7 +55,9 @@ class DlnaController {
             lowerMime.contains("mpegurl") || lowerMime.contains("m3u8") -> "http-get:*:application/vnd.apple.mpegurl:*"
             lowerMime.contains("dash") || lowerMime.contains("mpd") -> "http-get:*:application/dash+xml:*"
             lowerMime.contains("webm") -> "http-get:*:video/webm:*"
-            lowerMime.contains("mp2t") || lowerMime.contains("mpeg") -> "http-get:*:video/mpeg:*"
+            lowerMime.contains("mp2t") || lowerMime.contains("mpeg-ts") ||
+                lowerMime.contains("mpeg-tts") -> "http-get:*:video/vnd.dlna.mpeg-tts:*"
+            lowerMime.contains("mpeg") -> "http-get:*:video/mpeg:*"
             lowerMime.contains("audio") -> "http-get:*:audio/mpeg:*"
             lowerMime.contains("image") -> "http-get:*:$mimeType:*"
             else -> "http-get:*:video/mp4:*"
@@ -86,9 +88,11 @@ class DlnaController {
         mediaUrl: String,
         title: String = "Simple Cast Stream",
         upnpClass: String = "object.item.videoItem",
-        protocolInfo: String = "http-get:*:video/mp4:*"
+        protocolInfo: String = "http-get:*:video/mp4:*",
+        resolution: String? = null
     ): Boolean = withContext(Dispatchers.IO) {
-        val didlMetadata = """<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="1" parentID="0" restricted="1"><dc:title>${escapeXml(title)}</dc:title><upnp:class>$upnpClass</upnp:class><res protocolInfo="$protocolInfo">$mediaUrl</res></item></DIDL-Lite>"""
+        val resAttr = if (resolution != null) " resolution=\"$resolution\"" else ""
+        val didlMetadata = """<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="1" parentID="0" restricted="1"><dc:title>${escapeXml(title)}</dc:title><upnp:class>$upnpClass</upnp:class><res protocolInfo="$protocolInfo"$resAttr>$mediaUrl</res></item></DIDL-Lite>"""
 
         val soapBody = """<?xml version="1.0" encoding="utf-8"?>
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
