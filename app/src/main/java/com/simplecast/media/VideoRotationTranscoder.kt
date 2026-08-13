@@ -68,7 +68,8 @@ class VideoRotationTranscoder {
             val outWidth = if (isPortrait) srcHeight else srcWidth
             val outHeight = if (isPortrait) srcWidth else srcHeight
 
-            val mime = videoFormat.getString(MediaFormat.KEY_MIME) ?: return null
+            val mime = videoFormat.getString(MediaFormat.KEY_MIME)
+                ?: MediaFormat.MIMETYPE_VIDEO_AVC
             val frameRate = if (videoFormat.containsKey(MediaFormat.KEY_FRAME_RATE)) {
                 videoFormat.getInteger(MediaFormat.KEY_FRAME_RATE)
             } else {
@@ -110,7 +111,6 @@ class VideoRotationTranscoder {
             var audioMuxerTrack = -1
             var muxerStarted = false
             var videoDone = false
-            var audioDone = false
 
             val durationUs = if (videoFormat.containsKey(MediaFormat.KEY_DURATION)) {
                 videoFormat.getLong(MediaFormat.KEY_DURATION)
@@ -221,7 +221,7 @@ class VideoRotationTranscoder {
                 val audioInfo = MediaCodec.BufferInfo()
                 var audioInputDone = false
                 val audioBuf = ByteBuffer.allocate(1 shl 20)
-                while (!audioDone && !audioInputDone) {
+                while (!audioInputDone) {
                     audioBuf.clear()
                     val size = extractor.readSampleData(audioBuf, 0)
                     if (size < 0) {
@@ -243,7 +243,6 @@ class VideoRotationTranscoder {
             }
 
             muxer.stop()
-            audioDone = true
 
             Result(outputFile, outWidth, outHeight)
         } catch (e: Exception) {
