@@ -60,7 +60,7 @@ fun DeviceDiscoveryBottomSheet(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Connect to your LG TV on Wi-Fi",
+                        text = "Connect to your Smart TV / Android TV on Wi-Fi",
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }

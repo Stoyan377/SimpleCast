@@ -69,7 +69,7 @@ class LocalHttpServer(
                 val pn = if (mimeType.contains("png")) "PNG_LRG" else "JPEG_LRG"
                 "DLNA.ORG_PN=$pn;DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=00D00000000000000000000000000000"
             } else {
-                "DLNA.ORG_PN=MP4_MED;DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000"
+                "DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000"
             }
             val transferMode = if (isImage) "Interactive" else "Streaming"
 
@@ -167,23 +167,32 @@ class LocalHttpServer(
 
     /**
      * Reverse proxy: fetches a remote URL (HTTPS or HTTP) and streams it to the DLNA TV
-     * over plain HTTP. This solves the LG webOS HTTPS incompatibility.
+     * over plain HTTP. This solves the LG webOS HTTPS incompatibility and provides
+     * compatible HLS manifests with explicit .m3u8 and .ts endpoints for Android TV.
      *
-     * URL format: /proxy/<encoded_url>
-     * For HLS .m3u8 manifests, rewrites internal URLs to also go through the proxy.
+     * URL formats supported:
+     * - /proxy/stream.m3u8?url=<encoded_url>
+     * - /proxy/video.mp4?url=<encoded_url>
+     * - /proxy/<encoded_url>
      */
     private fun serveProxy(session: IHTTPSession): Response {
         return try {
             val fullUri = session.uri.substringAfter("/proxy/")
-            val rawUrl = fullUri.substringBefore("?")
-            val remoteUrl = java.net.URLDecoder.decode(rawUrl, "UTF-8")
-
-            // Parse optional query params passed to proxy (e.g. ?cookie=...)
             val queryString = session.queryParameterString ?: ""
+
             var queryCookie: String? = null
             if (queryString.contains("cookie=")) {
                 val cookieVal = queryString.substringAfter("cookie=").substringBefore("&")
                 queryCookie = java.net.URLDecoder.decode(cookieVal, "UTF-8")
+            }
+
+            var remoteUrl = ""
+            if (queryString.contains("url=")) {
+                val urlParam = queryString.substringAfter("url=").substringBefore("&")
+                remoteUrl = java.net.URLDecoder.decode(urlParam, "UTF-8")
+            } else {
+                val rawUrl = fullUri.substringBefore("?")
+                remoteUrl = java.net.URLDecoder.decode(rawUrl, "UTF-8")
             }
 
             if (remoteUrl.isBlank()) {
@@ -211,7 +220,6 @@ class LocalHttpServer(
             if (!referer.isNullOrEmpty()) {
                 conn.setRequestProperty("Referer", referer)
             } else {
-                // Default Referer to origin domain of stream
                 try {
                     val uriObj = URL(remoteUrl)
                     conn.setRequestProperty("Referer", "${uriObj.protocol}://${uriObj.host}/")
@@ -229,11 +237,12 @@ class LocalHttpServer(
             val contentLength = conn.contentLengthLong
 
             val isM3u8 = remoteUrl.lowercase().contains(".m3u8") ||
+                         session.uri.lowercase().contains(".m3u8") ||
                          contentType.contains("mpegURL", ignoreCase = true) ||
                          contentType.contains("x-mpegurl", ignoreCase = true)
 
             if (isM3u8) {
-                // For HLS manifests: rewrite segment URLs to also proxy through us
+                // For HLS manifests: rewrite segment URLs to also proxy through us with proper extensions
                 val manifestText = conn.inputStream.bufferedReader().readText()
                 conn.disconnect()
 
@@ -248,7 +257,7 @@ class LocalHttpServer(
                     rewrittenManifest.byteInputStream(),
                     manifestBytes.size.toLong()
                 )
-                addDlnaStreamingHeaders(response)
+                addDlnaStreamingHeaders(response, isHls = true)
                 response
             } else {
                 // For video segments / direct files: stream through
@@ -262,7 +271,6 @@ class LocalHttpServer(
                     if (contentLength > 0) contentLength else -1L
                 )
 
-                // Forward content-range for partial content
                 if (responseCode == 206) {
                     val contentRange = conn.getHeaderField("Content-Range")
                     if (!contentRange.isNullOrEmpty()) {
@@ -274,7 +282,7 @@ class LocalHttpServer(
                     response.addHeader("Content-Length", contentLength.toString())
                 }
 
-                addDlnaStreamingHeaders(response)
+                addDlnaStreamingHeaders(response, isHls = false)
                 response
             }
         } catch (e: Exception) {
@@ -297,23 +305,23 @@ class LocalHttpServer(
         for (line in lines) {
             val trimmed = line.trim()
             if (trimmed.isEmpty() || trimmed.startsWith("#")) {
-                // For EXT-X-STREAM-INF with URI= or EXT-X-MAP with URI=, rewrite inline URIs
                 if (trimmed.contains("URI=\"")) {
                     val rewritten = trimmed.replace(Regex("URI=\"([^\"]+)\"")) { match ->
                         val innerUrl = match.groupValues[1]
                         val fullUrl = resolveUrl(innerUrl, baseUrl)
                         val encoded = java.net.URLEncoder.encode(fullUrl, "UTF-8")
-                        "URI=\"http://$localIp:8080/proxy/$encoded\""
+                        val ext = if (fullUrl.lowercase().contains(".m3u8")) "playlist.m3u8" else "segment.ts"
+                        "URI=\"http://$localIp:8080/proxy/$ext?url=$encoded\""
                     }
                     sb.appendLine(rewritten)
                 } else {
                     sb.appendLine(trimmed)
                 }
             } else {
-                // This is a URL line (segment or sub-playlist)
                 val fullUrl = resolveUrl(trimmed, baseUrl)
                 val encoded = java.net.URLEncoder.encode(fullUrl, "UTF-8")
-                sb.appendLine("http://$localIp:8080/proxy/$encoded")
+                val ext = if (fullUrl.lowercase().contains(".m3u8")) "playlist.m3u8" else "segment.ts"
+                sb.appendLine("http://$localIp:8080/proxy/$ext?url=$encoded")
             }
         }
 
@@ -324,7 +332,6 @@ class LocalHttpServer(
         return when {
             url.startsWith("http://") || url.startsWith("https://") -> url
             url.startsWith("/") -> {
-                // Absolute path - combine with origin
                 val origin = try {
                     val u = URL(baseUrl)
                     "${u.protocol}://${u.host}" + (if (u.port > 0 && u.port != u.defaultPort) ":${u.port}" else "")
@@ -350,11 +357,15 @@ class LocalHttpServer(
         }
     }
 
-    private fun addDlnaStreamingHeaders(response: Response) {
+    private fun addDlnaStreamingHeaders(response: Response, isHls: Boolean = false) {
         response.addHeader("Accept-Ranges", "bytes")
         response.addHeader("transferMode.dlna.org", "Streaming")
-        response.addHeader("contentFeatures.dlna.org",
-            "DLNA.ORG_PN=MP4_MED;DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=21700000000000000000000000000000")
+        val flags = if (isHls) {
+            "DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=21700000000000000000000000000000"
+        } else {
+            "DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000"
+        }
+        response.addHeader("contentFeatures.dlna.org", flags)
         response.addHeader("Server", "Linux/2.6.0 UPnP/1.0 DLNADOC/1.50 SimpleCast/1.0")
         response.addHeader("Connection", "keep-alive")
         response.addHeader("Access-Control-Allow-Origin", "*")

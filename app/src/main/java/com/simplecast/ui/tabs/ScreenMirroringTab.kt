@@ -91,7 +91,7 @@ fun ScreenMirroringTab() {
                 Spacer(modifier = Modifier.height(20.dp))
 
                 Text(
-                    text = if (isMirroringActive) "Screen Mirroring Active" else "Duplicate Screen to LG TV",
+                    text = if (isMirroringActive) "Screen Mirroring Active" else "Duplicate Screen to TV",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
@@ -100,7 +100,7 @@ fun ScreenMirroringTab() {
 
                 Text(
                     text = if (isMirroringActive)
-                        "Your screen capture service is active and streaming live audio/video to LG Screen Share."
+                        "Your screen capture service is active and streaming live audio/video to TV Screen Share."
                     else
                         "Stream your entire phone screen and audio in real-time using native Miracast / MediaProjection.",
                     style = MaterialTheme.typography.bodyMedium,
@@ -154,7 +154,7 @@ fun ScreenMirroringTab() {
                 ) {
                     Icon(imageVector = Icons.Default.CastConnected, contentDescription = null, tint = NeonCyan)
                     Spacer(modifier = Modifier.width(10.dp))
-                    Text("Open LG Screen Share Settings", color = NeonCyan)
+                    Text("Open Wireless Display Settings", color = NeonCyan)
                 }
             }
         }
@@ -176,7 +176,7 @@ fun ScreenMirroringTab() {
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = "LG webOS Miracast Setup",
+                        text = "Wireless Display Setup",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -185,10 +185,10 @@ fun ScreenMirroringTab() {
                 Spacer(modifier = Modifier.height(14.dp))
 
                 val steps = listOf(
-                    "1. Turn on your LG TV and make sure it is connected to the same Wi-Fi.",
-                    "2. On your LG TV, open the app menu and launch 'Screen Share'.",
+                    "1. Turn on your TV and make sure it is connected to the same Wi-Fi network.",
+                    "2. On your TV, launch 'Screen Share' / 'Wireless Display' / 'Miracast'.",
                     "3. Click 'Start Screen Mirroring' above to grant Android MediaProjection permission.",
-                    "4. Select your LG TV from the system wireless display dialog."
+                    "4. Select your TV from the system wireless display dialog."
                 )
 
                 for (step in steps) {

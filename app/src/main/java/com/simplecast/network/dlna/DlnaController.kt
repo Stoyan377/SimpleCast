@@ -84,7 +84,7 @@ class DlnaController {
         resolution: String? = null
     ): Boolean = withContext(Dispatchers.IO) {
         val resAttr = if (!resolution.isNullOrBlank()) " resolution=\"$resolution\"" else ""
-        val didlMetadata = """<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="1" parentID="0" restricted="1"><dc:title>${escapeXml(title)}</dc:title><upnp:class>$upnpClass</upnp:class><res protocolInfo="$protocolInfo"$resAttr>$mediaUrl</res><res protocolInfo="http-get:*:video/mp4:*"$resAttr>$mediaUrl</res><res protocolInfo="http-get:*:*:*"$resAttr>$mediaUrl</res></item></DIDL-Lite>"""
+        val didlMetadata = """<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="1" parentID="0" restricted="1"><dc:title>${escapeXml(title)}</dc:title><upnp:class>$upnpClass</upnp:class><res protocolInfo="$protocolInfo"$resAttr>$mediaUrl</res><res protocolInfo="http-get:*:application/x-mpegURL:*">$mediaUrl</res><res protocolInfo="http-get:*:application/vnd.apple.mpegurl:*">$mediaUrl</res><res protocolInfo="http-get:*:video/vnd.dlna.mpeg-tts:*">$mediaUrl</res><res protocolInfo="http-get:*:video/mp4:*"$resAttr>$mediaUrl</res><res protocolInfo="http-get:*:*:*"$resAttr>$mediaUrl</res></item></DIDL-Lite>"""
 
         val soapBody = """<?xml version="1.0" encoding="utf-8"?>
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
@@ -236,7 +236,7 @@ class DlnaController {
                     lowerMime.contains("mp2t") || lowerMime.contains("mpeg-ts") || lowerMime.contains("mpeg-tts") ->
                         "http-get:*:video/vnd.dlna.mpeg-tts:DLNA.ORG_PN=MPEG_TS_SD_EU_ISO;DLNA.ORG_OP=01;DLNA.ORG_FLAGS=01700000000000000000000000000000"
                     else ->
-                        "http-get:*:video/mp4:DLNA.ORG_PN=MP4_MED;DLNA.ORG_OP=01;DLNA.ORG_FLAGS=01700000000000000000000000000000"
+                        "http-get:*:video/mp4:DLNA.ORG_OP=01;DLNA.ORG_FLAGS=01700000000000000000000000000000"
                 }
                 Pair("object.item.videoItem", pi)
             }
@@ -253,14 +253,46 @@ class DlnaController {
             )
         }
 
+        val aspectTag = calculateAspectRatio(resolution)?.let { "<upnp:aspectRatio>$it</upnp:aspectRatio>" } ?: ""
+
         // Multi-res fallback elements in DIDL-Lite for maximum TV compatibility
         val multiRes = if (mediaType == MediaType.VIDEO) {
-            """<res protocolInfo="$primaryPi"$resAttr>$mediaUrl</res><res protocolInfo="http-get:*:video/mp4:DLNA.ORG_OP=01;DLNA.ORG_FLAGS=21700000000000000000000000000000"$resAttr>$mediaUrl</res><res protocolInfo="http-get:*:application/vnd.apple.mpegurl:*">$mediaUrl</res><res protocolInfo="http-get:*:application/x-mpegURL:*">$mediaUrl</res><res protocolInfo="http-get:*:video/vnd.dlna.mpeg-tts:*">$mediaUrl</res><res protocolInfo="http-get:*:video/mp4:*">$mediaUrl</res><res protocolInfo="http-get:*:*:*">$mediaUrl</res>"""
+            """<res protocolInfo="$primaryPi"$resAttr>$mediaUrl</res><res protocolInfo="http-get:*:video/mp4:DLNA.ORG_OP=01;DLNA.ORG_FLAGS=01700000000000000000000000000000"$resAttr>$mediaUrl</res><res protocolInfo="http-get:*:video/mp4:DLNA.ORG_OP=01;DLNA.ORG_FLAGS=21700000000000000000000000000000"$resAttr>$mediaUrl</res><res protocolInfo="http-get:*:application/vnd.apple.mpegurl:*">$mediaUrl</res><res protocolInfo="http-get:*:application/x-mpegURL:*">$mediaUrl</res><res protocolInfo="http-get:*:video/vnd.dlna.mpeg-tts:*">$mediaUrl</res><res protocolInfo="http-get:*:video/mp4:*">$mediaUrl</res><res protocolInfo="http-get:*:*:*">$mediaUrl</res>"""
         } else {
             """<res protocolInfo="$primaryPi"$resAttr>$mediaUrl</res><res protocolInfo="http-get:*:$mimeType:*">$mediaUrl</res>"""
         }
 
-        return """<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="1" parentID="0" restricted="1"><dc:title>${escapeXml(title)}</dc:title><upnp:class>$upnpClass</upnp:class>$multiRes</item></DIDL-Lite>"""
+        return """<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/"><item id="1" parentID="0" restricted="1"><dc:title>${escapeXml(title)}</dc:title><upnp:class>$upnpClass</upnp:class>$aspectTag$multiRes</item></DIDL-Lite>"""
+    }
+
+    private fun calculateAspectRatio(resolution: String?): String? {
+        if (resolution.isNullOrBlank() || !resolution.contains("x")) return null
+        return try {
+            val parts = resolution.split("x")
+            val w = parts[0].toInt()
+            val h = parts[1].toInt()
+            if (w <= 0 || h <= 0) return null
+            if (w == h) return "1:1"
+            if (w * 9 == h * 16) return "16:9"
+            if (w * 16 == h * 9) return "9:16"
+            if (w * 3 == h * 4) return "4:3"
+            if (w * 4 == h * 3) return "3:4"
+            val gcdVal = gcd(w, h)
+            "${w / gcdVal}:${h / gcdVal}"
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun gcd(a: Int, b: Int): Int {
+        var n1 = a
+        var n2 = b
+        while (n2 != 0) {
+            val temp = n2
+            n2 = n1 % n2
+            n1 = temp
+        }
+        return n1
     }
 
     private fun escapeXml(str: String): String {

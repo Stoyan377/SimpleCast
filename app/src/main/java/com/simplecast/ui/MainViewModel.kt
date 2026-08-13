@@ -11,6 +11,7 @@ import com.simplecast.network.server.LocalHttpServer
 import com.simplecast.network.ssdp.DlnaDevice
 import com.simplecast.network.ssdp.SsdpDiscoveryManager
 import com.simplecast.network.utils.NetworkUtils
+import com.simplecast.media.VideoRotationTranscoder
 import com.simplecast.service.MediaPlaybackService
 import com.simplecast.web.SniffedMedia
 import kotlinx.coroutines.Dispatchers
@@ -103,12 +104,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         var inferredMime = contentResolver.getType(uri) ?: if (isVideo) "video/mp4" else "image/jpeg"
 
         viewModelScope.launch {
+            var finalUri = uri
             val videoInfo = if (isVideo) withContext(Dispatchers.IO) { getVideoInfo(uri) } else null
-            val resolution = if (videoInfo != null && videoInfo.width > 0 && videoInfo.height > 0) {
+            var resolution = if (videoInfo != null && videoInfo.width > 0 && videoInfo.height > 0) {
                 "${videoInfo.width}x${videoInfo.height}"
             } else null
 
-            httpServer.registerMedia(mediaId, uri)
+            // For Android TV / Philips / Sony:
+            // Android TV's built-in DLNA decoder ignores MP4 rotation metadata and displays vertical videos sideways.
+            // When target is an Android TV and the video has rotation (90°/270°), we perform a fast hardware transcode
+            // to bake the rotation into pixels with orientation 0 so it displays upright.
+            if (isVideo && device.isAndroidTv && videoInfo != null && videoInfo.rotation != 0) {
+                showToast("Adjusting video orientation for ${device.friendlyName}...")
+                val transcodeResult = withContext(Dispatchers.IO) {
+                    VideoRotationTranscoder().transcode(
+                        context = getApplication(),
+                        contentUri = uri,
+                        rotationDegrees = videoInfo.rotation
+                    )
+                }
+                if (transcodeResult != null) {
+                    finalUri = Uri.fromFile(transcodeResult.file)
+                    inferredMime = "video/mp4"
+                    resolution = "${transcodeResult.width}x${transcodeResult.height}"
+                }
+            }
+
+            httpServer.registerMedia(mediaId, finalUri)
             val localStreamUrl = "http://$ip:8080/media/$mediaId"
 
             val success = castUrl(
@@ -150,35 +172,43 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // First stop any existing playback
             dlnaController.stop(device.controlUrl)
 
-            // Proxy the web stream through our local HTTP server
-            // This converts HTTPS → HTTP which webOS / Android TV DLNA can handle
+            val isHls = sniffedMedia.url.lowercase().contains(".m3u8") ||
+                        sniffedMedia.mimeType.contains("mpegURL", ignoreCase = true) ||
+                        sniffedMedia.mimeType.contains("m3u8", ignoreCase = true)
+            val isTs = sniffedMedia.url.lowercase().contains(".ts") ||
+                       sniffedMedia.mimeType.contains("mp2t", ignoreCase = true) ||
+                       sniffedMedia.mimeType.contains("mpeg-ts", ignoreCase = true)
+
+            // Proxy the web stream through our local HTTP server with explicit extension
+            // (stream.m3u8 / video.mp4 / stream.ts) so Android TV media framework detects format accurately
             val encodedUrl = java.net.URLEncoder.encode(sniffedMedia.url, "UTF-8")
-            var proxyUrl = "http://$ip:8080/proxy/$encodedUrl"
+            val proxyFileName = when {
+                isHls -> "stream.m3u8"
+                isTs -> "stream.ts"
+                else -> "video.mp4"
+            }
+            var proxyUrl = "http://$ip:8080/proxy/$proxyFileName?url=$encodedUrl"
 
             // Attach cookies if captured
             if (!sniffedMedia.cookies.isNullOrEmpty()) {
                 val encodedCookies = java.net.URLEncoder.encode(sniffedMedia.cookies, "UTF-8")
-                proxyUrl += "?cookie=$encodedCookies"
+                proxyUrl += "&cookie=$encodedCookies"
             }
 
             // Normalize the mime the proxy actually serves
             val dlnaMime = when {
-                sniffedMedia.mimeType.contains("mpegURL", ignoreCase = true) ||
-                sniffedMedia.mimeType.contains("m3u8", ignoreCase = true) ->
-                    "application/x-mpegURL"
+                isHls -> "application/x-mpegURL"
                 sniffedMedia.mimeType.contains("dash", ignoreCase = true) ||
                 sniffedMedia.mimeType.contains("mpd", ignoreCase = true) ->
                     "application/dash+xml"
-                sniffedMedia.mimeType.contains("mp2t", ignoreCase = true) ||
-                sniffedMedia.mimeType.contains("mpeg-ts", ignoreCase = true) ->
-                    "video/vnd.dlna.mpeg-tts"
+                isTs -> "video/vnd.dlna.mpeg-tts"
                 else -> sniffedMedia.mimeType
             }
 
             var success = castUrl(device, proxyUrl, sniffedMedia.title, MediaType.VIDEO, dlnaMime)
 
-            // Last resort – try the original URL directly (only if it's plain HTTP)
-            if (!success && !sniffedMedia.url.startsWith("https")) {
+            // Last resort – try the original URL directly (supported directly by Android TV / Philips / Sony)
+            if (!success) {
                 success = castUrl(device, sniffedMedia.url, sniffedMedia.title, MediaType.VIDEO, dlnaMime)
             }
 
@@ -197,7 +227,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     showToast("URL accepted but playback failed – stream may be DRM-protected")
                 }
             } else {
-                showToast("TV rejected this stream – try another URL or a direct MP4/M3U8 link")
+                showToast("TV rejected this stream – try another channel or direct link")
             }
         }
     }
@@ -280,17 +310,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val rotation = retriever.extractMetadata(
                 android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION
             )?.toIntOrNull() ?: 0
-            val width = retriever.extractMetadata(
+            val rawWidth = retriever.extractMetadata(
                 android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH
             )?.toIntOrNull() ?: 0
-            val height = retriever.extractMetadata(
+            val rawHeight = retriever.extractMetadata(
                 android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT
             )?.toIntOrNull() ?: 0
             val mime = retriever.extractMetadata(
                 android.media.MediaMetadataRetriever.METADATA_KEY_MIMETYPE
             )?.lowercase() ?: ""
             retriever.release()
+
+            // If rotation is 90 or 270 degrees, the video is portrait (vertical).
+            // Swap display width and height so that the DLNA renderer (LG webOS / Android TV)
+            // receives the correct 9:16 portrait aspect ratio (e.g. 1080x1920 instead of 1920x1080)
+            // and centers it properly with full vertical height and balanced side bars.
+            val isRotated = rotation == 90 || rotation == 270
+            val width = if (isRotated && rawHeight > 0) rawHeight else rawWidth
+            val height = if (isRotated && rawWidth > 0) rawWidth else rawHeight
             val isHevc = mime.contains("hevc") || mime.contains("h265")
+
             VideoInfo(width, height, rotation, isHevc)
         } catch (e: Exception) {
             null

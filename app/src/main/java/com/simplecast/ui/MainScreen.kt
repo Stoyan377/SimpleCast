@@ -133,7 +133,7 @@ fun MainScreen(viewModel: MainViewModel = viewModel()) {
                                         maxLines = 1
                                     )
                                     Text(
-                                        text = if (playbackState.isPlaying) "Playing on LG TV" else "Paused",
+                                        text = if (playbackState.isPlaying) "Playing on ${selectedDevice?.friendlyName ?: "Smart TV"}" else "Paused",
                                         style = MaterialTheme.typography.bodyMedium
                                     )
                                 }

@@ -1,9 +1,12 @@
 package com.simplecast.ui.tabs
 
+import android.graphics.Bitmap
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -19,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -29,6 +33,8 @@ import com.simplecast.ui.theme.LgRedAccent
 import com.simplecast.ui.theme.NeonCyan
 import com.simplecast.ui.theme.SurfaceDark
 import com.simplecast.ui.theme.SurfaceVariantDark
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 fun GalleryTab(
@@ -37,8 +43,29 @@ fun GalleryTab(
     onCastMedia: (Uri, String, Boolean) -> Unit,
     onRequestDevicePicker: () -> Unit
 ) {
+    val context = LocalContext.current
     var selectedMediaUri by remember { mutableStateOf<Uri?>(null) }
     var isVideo by remember { mutableStateOf(true) }
+    var videoThumbnail by remember(selectedMediaUri) { mutableStateOf<Bitmap?>(null) }
+
+    LaunchedEffect(selectedMediaUri, isVideo) {
+        if (selectedMediaUri != null && isVideo) {
+            withContext(Dispatchers.IO) {
+                try {
+                    val retriever = MediaMetadataRetriever()
+                    retriever.setDataSource(context, selectedMediaUri)
+                    val frame = retriever.getFrameAtTime(1_000_000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                        ?: retriever.frameAtTime
+                    retriever.release()
+                    videoThumbnail = frame
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        } else {
+            videoThumbnail = null
+        }
+    }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -137,12 +164,21 @@ fun GalleryTab(
                                 .background(SurfaceVariantDark),
                             contentAlignment = Alignment.Center
                         ) {
-                            AsyncImage(
-                                model = selectedMediaUri,
-                                contentDescription = "Media Preview",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
+                            if (isVideo && videoThumbnail != null) {
+                                Image(
+                                    bitmap = videoThumbnail!!.asImageBitmap(),
+                                    contentDescription = "Video Preview",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                AsyncImage(
+                                    model = selectedMediaUri,
+                                    contentDescription = "Media Preview",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
 
                             if (isVideo) {
                                 Box(
@@ -193,7 +229,7 @@ fun GalleryTab(
                             Icon(imageVector = Icons.Default.Cast, contentDescription = null)
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(
-                                text = if (selectedDevice != null) "Cast to ${selectedDevice.friendlyName}" else "Select LG TV to Cast",
+                                text = if (selectedDevice != null) "Cast to ${selectedDevice.friendlyName}" else "Select Smart TV to Cast",
                                 fontWeight = FontWeight.Bold,
                                 style = MaterialTheme.typography.bodyLarge
                             )
@@ -231,7 +267,7 @@ fun GalleryTab(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         Text(
-                            text = "Choose a video or photo above to stream directly to your LG TV over DLNA with local HTTP server.",
+                            text = "Choose a video or photo above to stream directly to your Smart TV over DLNA with local HTTP server.",
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(horizontal = 24.dp)
                         )
