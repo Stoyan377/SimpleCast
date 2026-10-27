@@ -414,10 +414,11 @@ class LocalHttpServer(
         val currentTime = System.currentTimeMillis()
         if (cachedIptvHtml == null || (currentTime - lastIptvFetchTime) > 15 * 60 * 1000L) {
             try {
-                val url = URL("https://iptv.org.ua/iptv/avto-full.m3u")
+                val url = URL("https://raw.githubusercontent.com/slava-67/TV/refs/heads/IPTV/avto-full.m3u")
                 val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 10000
-                conn.readTimeout = 15000
+                conn.connectTimeout = 15000
+                conn.readTimeout = 20000
+                conn.instanceFollowRedirects = true
                 conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13)")
 
                 val lines = conn.inputStream.bufferedReader(Charsets.UTF_8).readLines()
@@ -453,7 +454,7 @@ class LocalHttpServer(
             }
         }
 
-        val htmlContent = cachedIptvHtml ?: "<html><body style='background:#12121c;color:white;font-family:sans-serif;padding:20dp;'><h2>IPTV Playlist Loading Failed</h2><p>Could not connect to iptv.org.ua list. Please try again.</p></body></html>"
+        val htmlContent = cachedIptvHtml ?: "<html><body style='background:#12121c;color:white;font-family:sans-serif;padding:20dp;'><h2>IPTV Playlist Loading Failed</h2><p>Could not load the IPTV playlist. Please check your internet connection and try again.</p></body></html>"
         val htmlBytes = htmlContent.toByteArray(Charsets.UTF_8)
         val res = newFixedLengthResponse(
             Response.Status.OK,
